@@ -27,7 +27,7 @@ import subprocess
 - Detects if MLNX_OFED is installed by checking for `mget_temp`
 - Uses `lspci -d 15b3:` to find Mellanox devices (PCI vendor ID 15b3)
 - Calls `mget_temp -d <device>` for each Mellanox NIC
-- Tries without sudo first, then falls back to sudo if needed
+- Requires mget_temp to be runnable without sudo
 - Returns temperature data in the same format as other sensors
 - Comprehensive error handling and logging
 
@@ -49,21 +49,21 @@ import subprocess
 
 ## New Files Created
 
-### 1. `test_mellanox_temp.py`
+### 1. `tools/test_mellanox_temp.py`
 - Test script to verify Mellanox temperature detection
 - Can be run independently to check if detection works
 - Outputs clear pass/fail status
 
-### 2. `verify_mellanox_fix.py`
+### 2. `tools/verify_mellanox_fix.py`
 - Verification script for the temperature conversion fix
 - Demonstrates that millidegrees are correctly converted to Celsius
 - Verifies default thresholds are set correctly
 - Provides clear pass/fail output
 
 ### 3. Documentation Files
-- `CHANGES_SUMMARY.md` - Detailed summary of all changes
-- `MELLANOX_FIX_SUMMARY.md` - Technical details of the fix
-- `MELLANOX_TEMP_README.md` - Usage instructions and troubleshooting
+- `tools/CHANGES_SUMMARY.md` - Detailed summary of all changes
+- `tools/MELLANOX_FIX_SUMMARY.md` - Technical details of the fix
+- `tools/MELLANOX_TEMP_README.md` - Usage instructions and troubleshooting
 
 ## Technical Details
 
@@ -94,9 +94,9 @@ import subprocess
 The implementation includes comprehensive error handling:
 - Gracefully handles missing MLNX_OFED
 - Handles missing `mget_temp` tool
-- Handles `lspci` failures
+- Handles `lspci` failures and timeouts
 - Handles `mget_temp` timeouts
-- Handles permission errors (tries without sudo first, then with sudo)
+- Handles permission errors (requires mget_temp to be runnable without sudo)
 - Comprehensive logging for debugging
 
 ## Backward Compatibility
@@ -128,10 +128,10 @@ To verify the fix works on your system:
 
 ```bash
 # Test the temperature reading
-python3 verify_mellanox_fix.py
+python3 tools/verify_mellanox_fix.py
 
 # Test Mellanox detection
-python3 test_mellanox_temp.py
+python3 tools/test_mellanox_temp.py
 ```
 
 ## Usage
@@ -171,8 +171,6 @@ The changes are backward compatible:
 3. Test manual temperature reading:
    ```bash
    mget_temp -d <device_address>
-   # or with sudo if needed
-   sudo mget_temp -d <device_address>
    ```
 
 4. Check jtop logs for errors:
@@ -182,19 +180,33 @@ The changes are backward compatible:
 
 ### Permission issues?
 
-The implementation tries to run `mget_temp` without sudo first, and only falls back to sudo if needed.
+The implementation runs `mget_temp` without sudo. Users must ensure appropriate permissions are configured.
 
-To avoid sudo prompts, ensure the jtop user has permission to run `mget_temp`:
+To avoid permission issues, ensure the jtop user has permission to run `mget_temp`:
 
-**Option 1: Add jtop user to mlnx group**
+**Option 1: Add jtop user to appropriate groups**
 ```bash
-sudo usermod -a -G mlnx jtop
+# Find the correct group (typically 'mellanox' or 'mlnx')
+ls -la /opt/mellanox/mft/bin/mget_temp
+
+# Add jtop user to the group
+sudo usermod -a -G mellanox jtop
 sudo systemctl restart jtop.service
 ```
 
-**Option 2: Configure sudo to not require password**
+**Option 2: Create a sudo wrapper script**
 ```bash
-# Edit sudoers file
+# Create a wrapper script that runs mget_temp with sudo
+sudo nano /usr/local/bin/mget_temp_wrapper.sh
+
+# Add content:
+#!/bin/bash
+exec sudo /opt/mellanox/mft/bin/mget_temp "$@"
+
+# Make it executable
+sudo chmod +x /usr/local/bin/mget_temp_wrapper.sh
+
+# Configure sudo to not require password
 sudo visudo
 
 # Add this line (replace 'jtop' with the actual user if different)
@@ -237,7 +249,7 @@ Potential improvements for future versions:
 - [x] Mellanox temperature detection function implemented
 - [x] Temperature conversion from millidegrees to Celsius
 - [x] Default max and crit thresholds added
-- [x] Sudo fallback mechanism implemented
+- [x] Non-sudo execution requirement documented
 - [x] Comprehensive error handling
 - [x] Backward compatibility maintained
 - [x] Test script created and working
