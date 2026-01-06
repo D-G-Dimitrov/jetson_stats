@@ -7,8 +7,8 @@ Test script for Mellanox temperature detection
 import sys
 import os
 
-# Add the current directory to the path to import jtop
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add the project root directory to the path to import jtop
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')))
 
 from jtop.core.temperature import get_mellanox_temperature
 
