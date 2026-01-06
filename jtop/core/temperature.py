@@ -20,6 +20,7 @@ from .common import cat, check_file
 import os
 import re
 import subprocess
+import shutil
 # Logging
 import logging
 # Create logger
@@ -122,71 +123,83 @@ def get_hwmon_thermal_system(root_dir):
 def get_mellanox_temperature():
     """Detect and read temperature from Mellanox NICs with MLNX_OFED support"""
     temperature = {}
+    
     # Check if mget_temp is available (part of MLNX_OFED)
+    if not shutil.which('mget_temp'):
+        logger.debug("mget_temp not found, Mellanox temperature detection skipped")
+        return temperature
+    
+    logger.info("MLNX_OFED detected, using mget_temp for Mellanox NIC temperatures")
+    
+    # Find all Mellanox devices
     try:
-        result = subprocess.run(['which', 'mget_temp'], capture_output=True, text=True)
-        if result.returncode == 0:
-            # mget_temp is available, use it to read temperatures
-            logger.info("MLNX_OFED detected, using mget_temp for Mellanox NIC temperatures")
-            # Find all Mellanox devices
-            try:
-                # Get list of Mellanox devices
-                devices_result = subprocess.run(['lspci', '-d', '15b3:', '-D'], capture_output=True, text=True)
-                if devices_result.returncode == 0 and devices_result.stdout.strip():
-                    device_lines = devices_result.stdout.strip().split('\n')
-                    for device_line in device_lines:
-                        if device_line.strip():
-                            # Extract device name and bus address
-                            parts = device_line.strip().split()
-                            if len(parts) >= 2:
-                                bus_addr = parts[0]
-                                device_name = ' '.join(parts[1:])
-                                # Check if it's a ConnectX device
-                                if 'ConnectX' in device_name or 'MT' in device_name:
-                                    # Try to read temperature using mget_temp
-                                    # First try without sudo, then with sudo
-                                    temp_result = None
-                                    try:
-                                        # Try without sudo first
-                                        temp_result = subprocess.run(
-                                            ['mget_temp', '-d', bus_addr],
-                                            capture_output=True,
-                                            text=True,
-                                            timeout=2
-                                        )
-                                        if temp_result.returncode != 0:
-                                            # If failed without sudo, try with sudo
-                                            temp_result = subprocess.run(
-                                                ['sudo', 'mget_temp', '-d', bus_addr],
-                                                capture_output=True,
-                                                text=True,
-                                                timeout=2
-                                            )
-                                    except subprocess.TimeoutExpired:
-                                        logger.warning(f"mget_temp timed out for {bus_addr}")
-                                        continue
-                                    except Exception as e:
-                                        logger.warning(f"Error reading temperature for {bus_addr}: {str(e)}")
-                                        continue
-                                    
-                                    if temp_result.returncode == 0 and temp_result.stdout.strip():
-                                        temp_value = temp_result.stdout.strip()
-                                        try:
-                                            temp_celsius = float(temp_value)
-                                            # Create a virtual temperature file path for compatibility
-                                            sensor_key = f"mlx_{bus_addr.replace(':', '_').replace('.', '_')}"
-                                            temperature[sensor_key] = {
-                                                'temp': temp_celsius * 1000.0  # Store in millidegrees for consistency
-                                            }
-                                            logger.info(f"Found Mellanox NIC temperature: {device_name} = {temp_celsius}°C")
-                                        except ValueError:
-                                            logger.warning(f"Could not parse temperature from mget_temp for {bus_addr}")
-                                    elif temp_result.returncode != 0:
-                                        logger.warning(f"mget_temp failed for {bus_addr}: {temp_result.stderr}")
-            except Exception as e:
-                logger.warning(f"Error detecting Mellanox devices: {str(e)}")
+        # Get list of Mellanox devices
+        devices_result = subprocess.run(
+            ['lspci', '-d', '15b3:', '-D'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning("Timeout while running lspci to detect Mellanox devices")
+        return temperature
     except Exception as e:
-        logger.debug(f"mget_temp not available, Mellanox temperature detection skipped: {str(e)}")
+        logger.warning(f"Error running lspci to detect Mellanox devices: {str(e)}")
+        return temperature
+    
+    if devices_result.returncode != 0 or not devices_result.stdout.strip():
+        logger.debug("No Mellanox devices found via lspci")
+        return temperature
+    
+    device_lines = devices_result.stdout.strip().split('\n')
+    for device_line in device_lines:
+        if device_line.strip():
+            # Extract device name and bus address
+            parts = device_line.strip().split()
+            if len(parts) >= 2:
+                bus_addr = parts[0]
+                device_name = ' '.join(parts[1:])
+                # Check if it's a ConnectX device
+                if 'ConnectX' in device_name or 'MT' in device_name:
+                    # Try to read temperature using mget_temp
+                    # Note: mget_temp must be runnable without sudo
+                    # Users should configure appropriate permissions or use sudo wrapper scripts
+                    try:
+                        temp_result = subprocess.run(
+                            ['mget_temp', '-d', bus_addr],
+                            capture_output=True,
+                            text=True,
+                            timeout=2
+                        )
+                    except subprocess.TimeoutExpired:
+                        logger.warning(f"mget_temp timed out for {bus_addr}")
+                        continue
+                    except Exception as e:
+                        logger.warning(f"Error reading temperature for {bus_addr}: {str(e)}")
+                        continue
+                    
+                    if temp_result.returncode == 0 and temp_result.stdout.strip():
+                        raw_output = temp_result.stdout.strip()
+                        # Use only the first line and extract the first numeric token to be resilient to format changes
+                        first_line = raw_output.splitlines()[0]
+                        match = re.search(r'([-+]?(?:\d+(?:\.\d*)?|\.\d+))', first_line)
+                        if not match:
+                            logger.warning(f"Could not find numeric temperature in mget_temp output for {bus_addr}: {first_line!r}")
+                            continue
+                        temp_value_str = match.group(1)
+                        try:
+                            temp_celsius = float(temp_value_str)
+                            # Create a virtual temperature file path for compatibility
+                            sensor_key = f"mlx_{bus_addr.replace(':', '_').replace('.', '_')}"
+                            temperature[sensor_key] = {
+                                'temp': temp_celsius * 1000.0  # Store in millidegrees for consistency
+                            }
+                            logger.info(f"Found Mellanox NIC temperature: {device_name} = {temp_celsius}°C")
+                        except ValueError:
+                            logger.warning(f"Could not parse temperature from mget_temp for {bus_addr}: {temp_value_str!r}")
+                    elif temp_result.returncode != 0:
+                        logger.warning(f"mget_temp failed for {bus_addr}: {temp_result.stderr}")
+    
     return temperature
 
 

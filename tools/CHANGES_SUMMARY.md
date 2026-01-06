@@ -14,7 +14,7 @@
 **Key Features:**
 - Detects MLNX_OFED installation by checking for `mget_temp`
 - Uses `lspci -d 15b3:` to find Mellanox devices
-- Calls `sudo mget_temp -d <device>` for each NIC
+- Calls `mget_temp -d <device>` for each NIC (requires appropriate permissions)
 - Stores temperatures in millidegrees for consistency
 - Comprehensive error handling and logging
 
@@ -67,9 +67,9 @@
 
 - Gracefully handles missing MLNX_OFED
 - Handles missing `mget_temp` tool
-- Handles `lspci` failures
+- Handles `lspci` failures and timeouts
 - Handles `mget_temp` timeouts
-- Handles permission errors (uses sudo)
+- Handles permission errors (requires mget_temp to be runnable without sudo)
 - Comprehensive logging for debugging
 
 ## Backward Compatibility
@@ -93,11 +93,15 @@ The implementation has been tested with:
 ### For Users
 
 1. Install MLNX_OFED (if not already installed)
-2. Restart jtop service:
+2. Ensure `mget_temp` is executable without sudo:
+   - Add user to appropriate groups (e.g., `mellanox`)
+   - Or create a sudo wrapper script
+   - Or run jtop service with appropriate permissions
+3. Restart jtop service:
    ```bash
    sudo systemctl restart jtop.service
    ```
-3. Mellanox NIC temperatures will appear in jtop
+4. Mellanox NIC temperatures will appear in jtop
 
 ### For Developers
 

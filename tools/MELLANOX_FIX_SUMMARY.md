@@ -3,7 +3,7 @@
 ## Problem Description
 
 After installing MLNX_OFED v24.10-3.2.5.0 LTS on a Jetson platform with a Mellanox ConnectX-5 NIC:
-- The NIC temperature was accessible via `sudo mget_temp -d 0005:01:00.0` and returned valid values (e.g., 44)
+- The NIC temperature was accessible via `mget_temp -d 0005:01:00.0` and returned valid values (e.g., 44)
 - However, the temperature reading disappeared from jtop's sensor-temp display
 - This was inconsistent behavior - temperatures should be visible with or without MLNX_OFED
 
@@ -54,16 +54,13 @@ subprocess.run(['sudo', 'mget_temp', '-d', bus_addr], ...)
 
 **After:**
 ```python
-# Try without sudo first, then with sudo
+# Runs without sudo
 temp_result = subprocess.run(['mget_temp', '-d', bus_addr], ...)
-if temp_result.returncode != 0:
-    # If failed without sudo, try with sudo
-    temp_result = subprocess.run(['sudo', 'mget_temp', '-d', bus_addr], ...)
 ```
 
 This improvement:
-- Avoids sudo prompts when not needed
-- Works better with the mlnx group permissions
+- Removes sudo dependency for better reliability
+- Works with appropriate group permissions
 - Provides better error handling
 
 ## Testing
@@ -148,8 +145,6 @@ If temperatures still don't appear:
 3. **Test manual temperature reading**:
    ```bash
    mget_temp -d <device_address>
-   # or with sudo if needed
-   sudo mget_temp -d <device_address>
    ```
 
 4. **Check jtop logs**:

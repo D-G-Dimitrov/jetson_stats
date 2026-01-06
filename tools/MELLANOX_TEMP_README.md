@@ -25,7 +25,7 @@ Modified the temperature monitoring system to detect and read Mellanox NIC tempe
 #### Added new function `get_mellanox_temperature()`:
 - Detects if MLNX_OFED is installed by checking for `mget_temp`
 - Uses `lspci` to find Mellanox devices (PCI vendor ID 15b3)
-- Calls `sudo mget_temp -d <device>` for each Mellanox NIC
+- Calls `mget_temp -d <device>` for each Mellanox NIC
 - Returns temperature data in the same format as other sensors
 
 #### Modified `read_temperature()` function:
@@ -119,7 +119,7 @@ The implementation includes comprehensive error handling:
 
 3. Test manual temperature reading:
    ```bash
-   sudo mget_temp -d <device_address>
+   mget_temp -d <device_address>
    ```
 
 4. Check jtop logs for errors:
@@ -129,9 +129,9 @@ The implementation includes comprehensive error handling:
 
 ### Permission issues?
 
-The implementation now tries to run `mget_temp` without sudo first, and only falls back to sudo if needed.
+The implementation runs `mget_temp` without sudo. Users must ensure appropriate permissions are configured.
 
-To avoid sudo prompts, ensure the jtop user has permission to run `mget_temp`:
+To configure permissions for `mget_temp`:
 
 **Option 1: Add jtop user to mlnx group**
 ```bash

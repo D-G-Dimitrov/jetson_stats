@@ -33,7 +33,7 @@ The implementation of Mellanox NIC temperature support for jetson_stats has been
 
 ✅ **Default Thresholds**: Default max (84°C) and crit (100°C) thresholds for proper color coding
 
-✅ **Sudo Fallback**: Tries to run `mget_temp` without sudo first, then falls back to sudo if needed
+✅ **Non-sudo Execution**: Runs `mget_temp` without sudo, requires appropriate permissions
 
 ✅ **Comprehensive Error Handling**: Gracefully handles missing tools, timeouts, and permission errors
 
