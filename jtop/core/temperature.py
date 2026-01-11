@@ -191,7 +191,7 @@ def get_mellanox_temperature():
                             temp_celsius = float(temp_value_str)
                             # Create a virtual temperature file path for compatibility
                             # Shorten the sensor name to avoid long display names
-                            sensor_key = f"mlx_{bus_addr.replace(':', '_')}"
+                            sensor_key = "mlx"
                             temperature[sensor_key] = {
                                 'temp': temp_celsius * 1000.0  # Store in millidegrees for consistency
                             }
@@ -236,11 +236,11 @@ class TemperatureService(object):
             # Check if sensor value is already a number (from Mellanox) or a path
             if isinstance(sensor.get('temp'), (int, float)):
                 # For Mellanox sensors, we need to read the current temperature each time
-                # Check if this is a Mellanox sensor by checking if the name starts with 'mlx_'
-                if name.startswith('mlx_'):
+                # Check if this is a Mellanox sensor by checking if the name is 'mlx'
+                if name == 'mlx':
                     # Get current Mellanox temperature
                     mellanox_temps = get_mellanox_temperature()
-                    if name in mellanox_temps:
+                    if 'mlx' in mellanox_temps:
                         mellanox_sensor = mellanox_temps[name]
                         if isinstance(mellanox_sensor.get('temp'), (int, float)):
                             temp_value = mellanox_sensor['temp'] / 1000.0
