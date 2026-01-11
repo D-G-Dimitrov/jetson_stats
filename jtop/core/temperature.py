@@ -190,7 +190,8 @@ def get_mellanox_temperature():
                         try:
                             temp_celsius = float(temp_value_str)
                             # Create a virtual temperature file path for compatibility
-                            sensor_key = f"mlx_{bus_addr.replace(':', '_').replace('.', '_')}"
+                            # Shorten the sensor name to avoid long display names
+                            sensor_key = f"mlx_{bus_addr.replace(':', '_')}"
                             temperature[sensor_key] = {
                                 'temp': temp_celsius * 1000.0  # Store in millidegrees for consistency
                             }
@@ -234,12 +235,32 @@ class TemperatureService(object):
         for name, sensor in self._temperature.items():
             # Check if sensor value is already a number (from Mellanox) or a path
             if isinstance(sensor.get('temp'), (int, float)):
-                # Direct value from Mellanox (stored in millidegrees)
-                temp_value = sensor['temp'] / 1000.0
-                values = {'temp': temp_value}
-                # Add default max and crit values for Mellanox sensors
-                values['max'] = 84  # Default max temperature
-                values['crit'] = 100  # Default critical temperature
+                # For Mellanox sensors, we need to read the current temperature each time
+                # Check if this is a Mellanox sensor by checking if the name starts with 'mlx_'
+                if name.startswith('mlx_'):
+                    # Get current Mellanox temperature
+                    mellanox_temps = get_mellanox_temperature()
+                    if name in mellanox_temps:
+                        mellanox_sensor = mellanox_temps[name]
+                        if isinstance(mellanox_sensor.get('temp'), (int, float)):
+                            temp_value = mellanox_sensor['temp'] / 1000.0
+                            values = {'temp': temp_value}
+                            # Add default max and crit values for Mellanox sensors
+                            values['max'] = 84  # Default max temperature
+                            values['crit'] = 100  # Default critical temperature
+                        else:
+                            # Fallback to path-based reading
+                            values = read_temperature(mellanox_sensor)
+                    else:
+                        # Sensor not found, mark as offline
+                        values = {'temp': TEMPERATURE_OFFLINE, 'max': 84, 'crit': 100}
+                else:
+                    # Direct numeric value (stored in millidegrees)
+                    temp_value = sensor['temp'] / 1000.0
+                    values = {'temp': temp_value}
+                    # Add default max and crit values for Mellanox sensors
+                    values['max'] = 84  # Default max temperature
+                    values['crit'] = 100  # Default critical temperature
             else:
                 # Path-based sensor
                 values = read_temperature(sensor)
