@@ -25,7 +25,7 @@ def test_mellanox_detection():
         for name, sensor in temps.items():
             temp_value = sensor.get('temp', 0)
             temp_celsius = temp_value / 1000.0
-            print(f"  - {name}: {temp_celsius:.1f}°C")
+            print(f"  - {name}: {temp_celsius:.2f}°C")
         print("\n✓ Test PASSED - Mellanox temperatures are being detected")
     else:
         print("✗ No Mellanox temperatures detected")

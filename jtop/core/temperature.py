@@ -192,10 +192,11 @@ def get_mellanox_temperature():
                             # Create a virtual temperature file path for compatibility
                             # Shorten the sensor name to avoid long display names
                             sensor_key = "mlx"
+                            # Store with higher precision to preserve decimal places
                             temperature[sensor_key] = {
                                 'temp': temp_celsius * 1000.0  # Store in millidegrees for consistency
                             }
-                            logger.info(f"Found Mellanox NIC temperature: {device_name} = {temp_celsius}°C")
+                            logger.info(f"Found Mellanox NIC temperature: {device_name} = {temp_celsius:.2f}°C")
                         except ValueError:
                             logger.warning(f"Could not parse temperature from mget_temp for {bus_addr}: {temp_value_str!r}")
                     elif temp_result.returncode != 0:
