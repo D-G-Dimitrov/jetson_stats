@@ -27,7 +27,7 @@ def test_temperature_updates():
     for name, sensor in status1.items():
         temp = sensor.get('temp', 'N/A')
         online = sensor.get('online', False)
-        print(f"  - {name}: {temp:.1f}°C (online: {online})")
+        print(f"  - {name}: {temp:.2f}°C (online: {online})")
 
     # Simulate a delay (in real scenario, this would be a few seconds)
     print("\nWaiting 2 seconds to simulate time passing...")
@@ -39,7 +39,7 @@ def test_temperature_updates():
     for name, sensor in status2.items():
         temp = sensor.get('temp', 'N/A')
         online = sensor.get('online', False)
-        print(f"  - {name}: {temp:.1f}°C (online: {online})")
+        print(f"  - {name}: {temp:.2f}°C (online: {online})")
 
     # Check if any Mellanox sensors exist and verify they can be updated
     mellanox_sensors = [name for name in status1.keys() if name.startswith('mlx_')]
