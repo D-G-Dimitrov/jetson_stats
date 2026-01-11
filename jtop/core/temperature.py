@@ -40,6 +40,72 @@ def read_temperature(data):
             values[name] = TEMPERATURE_OFFLINE
     return values
 
+def read_mellanox_sensor(sensor_name, sensor_data):
+    """
+    Read temperature from a Mellanox sensor.
+
+    Args:
+        sensor_name: Name of the sensor (e.g., 'mlx')
+        sensor_data: Sensor data dictionary
+
+    Returns:
+        Dictionary with temperature values including temp, max, crit, and online status
+    """
+    values = {'max': 84, 'crit': 100}  # Default values for Mellanox sensors
+
+    # Check if sensor value is already a number (from Mellanox)
+    if isinstance(sensor_data.get('temp'), (int, float)):
+        # Direct numeric value (stored in millidegrees)
+        temp_value = sensor_data['temp'] / 1000.0
+        values['temp'] = temp_value
+    else:
+        # Path-based sensor
+        temp_values = read_temperature(sensor_data)
+        values['temp'] = temp_values.get('temp', TEMPERATURE_OFFLINE)
+
+    values['online'] = values['temp'] != TEMPERATURE_OFFLINE
+    return values
+
+def read_sensor_value(sensor):
+    """
+    Read sensor value and convert to appropriate format.
+
+    Args:
+        sensor: Sensor dictionary containing temperature data
+
+    Returns:
+        Dictionary with temperature value and online status
+    """
+    values = {}
+
+    # Check if sensor value is already a number (from Mellanox) or a path
+    if isinstance(sensor.get('temp'), (int, float)):
+        # Direct numeric value (stored in millidegrees)
+        temp_value = sensor['temp'] / 1000.0
+        values['temp'] = temp_value
+        # Copy max and crit values if they exist
+        if 'max' in sensor:
+            values['max'] = sensor['max'] / 1000.0 if isinstance(sensor['max'], (int, float)) else sensor['max']
+        if 'crit' in sensor:
+            values['crit'] = sensor['crit'] / 1000.0 if isinstance(sensor['crit'], (int, float)) else sensor['crit']
+        # Add default max and crit values if not present
+        if 'max' not in values:
+            values['max'] = 84  # Default max temperature
+        if 'crit' not in values:
+            values['crit'] = 100  # Default critical temperature
+        values['online'] = True
+    else:
+        # Path-based sensor
+        values = read_temperature(sensor)
+        # Copy max and crit values if they exist
+        if 'max' in sensor:
+            values['max'] = sensor['max']
+        if 'crit' in sensor:
+            values['crit'] = sensor['crit']
+        values['online'] = values['temp'] != TEMPERATURE_OFFLINE
+
+    return values
+
 
 def get_virtual_thermal_temperature(thermal_path):
     temperature = {}
@@ -117,14 +183,14 @@ def get_hwmon_thermal_system(root_dir):
 def get_mellanox_temperature():
     """Detect and read temperature from Mellanox NICs with MLNX_OFED support"""
     temperature = {}
-    
+
     # Check if mget_temp is available (part of MLNX_OFED)
     if not shutil.which('mget_temp'):
         logger.debug("mget_temp not found, Mellanox temperature detection skipped")
         return temperature
-    
+
     logger.info("MLNX_OFED detected, using mget_temp for Mellanox NIC temperatures")
-    
+
     # Find all Mellanox devices
     try:
         # Get list of Mellanox devices
@@ -140,11 +206,11 @@ def get_mellanox_temperature():
     except Exception as e:
         logger.warning(f"Error running lspci to detect Mellanox devices: {str(e)}")
         return temperature
-    
+
     if devices_result.returncode != 0 or not devices_result.stdout.strip():
         logger.debug("No Mellanox devices found via lspci")
         return temperature
-    
+
     device_lines = devices_result.stdout.strip().split('\n')
     for device_line in device_lines:
         if device_line.strip():
@@ -171,7 +237,7 @@ def get_mellanox_temperature():
                     except Exception as e:
                         logger.warning(f"Error reading temperature for {bus_addr}: {str(e)}")
                         continue
-                    
+
                     if temp_result.returncode == 0 and temp_result.stdout.strip():
                         raw_output = temp_result.stdout.strip()
                         # Use only the first line and extract the first numeric token to be resilient to format changes
@@ -183,19 +249,21 @@ def get_mellanox_temperature():
                         temp_value_str = match.group(1)
                         try:
                             temp_celsius = float(temp_value_str)
-                            # Create a virtual temperature file path for compatibility
                             # Shorten the sensor name to avoid long display names
                             sensor_key = "mlx"
                             # Store with higher precision to preserve decimal places
+                            # Include default max and crit values for Mellanox sensors
                             temperature[sensor_key] = {
-                                'temp': temp_celsius * 1000.0  # Store in millidegrees for consistency
+                                'temp': temp_celsius * 1000.0,  # Store in millidegrees for consistency
+                                'max': 84,  # Default max temperature
+                                'crit': 100  # Default critical temperature
                             }
                             logger.info(f"Found Mellanox NIC temperature: {device_name} = {temp_celsius:.2f}°C")
                         except ValueError:
                             logger.warning(f"Could not parse temperature from mget_temp for {bus_addr}: {temp_value_str!r}")
                     elif temp_result.returncode != 0:
                         logger.warning(f"mget_temp failed for {bus_addr}: {temp_result.stderr}")
-    
+
     return temperature
 
 
@@ -228,39 +296,19 @@ class TemperatureService(object):
         status = {}
         # Read temperature from board
         for name, sensor in self._temperature.items():
-            # Check if sensor value is already a number (from Mellanox) or a path
-            if isinstance(sensor.get('temp'), (int, float)):
-                # For Mellanox sensors, we need to read the current temperature each time
-                # Check if this is a Mellanox sensor by checking if the name is 'mlx'
-                if name == 'mlx':
-                    # Get current Mellanox temperature
-                    mellanox_temps = get_mellanox_temperature()
-                    if 'mlx' in mellanox_temps:
-                        mellanox_sensor = mellanox_temps[name]
-                        if isinstance(mellanox_sensor.get('temp'), (int, float)):
-                            temp_value = mellanox_sensor['temp'] / 1000.0
-                            values = {'temp': temp_value}
-                            # Add default max and crit values for Mellanox sensors
-                            values['max'] = 84  # Default max temperature
-                            values['crit'] = 100  # Default critical temperature
-                        else:
-                            # Fallback to path-based reading
-                            values = read_temperature(mellanox_sensor)
-                    else:
-                        # Sensor not found, mark as offline
-                        values = {'temp': TEMPERATURE_OFFLINE, 'max': 84, 'crit': 100}
+            # Check if this is a Mellanox sensor that needs fresh data
+            if name == 'mlx' and isinstance(sensor.get('temp'), (int, float)):
+                # Get current Mellanox temperature
+                mellanox_temps = get_mellanox_temperature()
+                if 'mlx' in mellanox_temps:
+                    # Read Mellanox sensor with default max/crit values
+                    values = read_mellanox_sensor(name, mellanox_temps[name])
                 else:
-                    # Direct numeric value (stored in millidegrees)
-                    temp_value = sensor['temp'] / 1000.0
-                    values = {'temp': temp_value}
-                    # Add default max and crit values for Mellanox sensors
-                    values['max'] = 84  # Default max temperature
-                    values['crit'] = 100  # Default critical temperature
+                    # Sensor not found, mark as offline
+                    values = {'temp': TEMPERATURE_OFFLINE, 'max': 84, 'crit': 100, 'online': False}
             else:
-                # Path-based sensor
-                values = read_temperature(sensor)
-            # Status sensor
-            values['online'] = values['temp'] != TEMPERATURE_OFFLINE
+                # Read sensor value using generic function
+                values = read_sensor_value(sensor)
             # Add sensor in dictionary
             status[name] = values
         return status
