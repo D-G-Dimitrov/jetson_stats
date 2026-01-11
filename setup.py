@@ -136,6 +136,8 @@ class JTOPDevelopCommand(develop):
 # Minimal setup() call - most configuration is in pyproject.toml
 if __name__ == '__main__':
     setup(
+        name="jetson-stats",
+        version="4.5.4",
         # Custom commands for backward compatibility
         cmdclass={
             'develop': JTOPDevelopCommand,
