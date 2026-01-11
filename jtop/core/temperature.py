@@ -31,16 +31,10 @@ TEMPERATURE_OFFLINE = -256
 
 def read_temperature(data):
     values = {}
-    for name, value in data.items():
+    for name, path in data.items():
         try:
-            # Check if value is already a number (from Mellanox) or a path
-            if isinstance(value, (int, float)):
-                # Direct numeric value (already in millidegrees)
-                values[name] = value / 1000.0
-            else:
-                # Path to temperature file
-                temp_value = float(cat(value)) / 1000.0
-                values[name] = temp_value
+            value = float(cat(path)) / 1000.0
+            values[name] = value
         except (OSError, ValueError):
             # If negative sensor offline
             values[name] = TEMPERATURE_OFFLINE
