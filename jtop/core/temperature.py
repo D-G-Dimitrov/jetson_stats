@@ -301,9 +301,13 @@ def get_nvme_temperature():
             device_name = re.sub(r'n\d+$', '', device_name)
 
             # Try to read temperature using nvme smart-log
+            # Check if we're running with sudo privileges
+            use_sudo = os.geteuid() != 0
+            nvme_cmd = ['sudo', 'nvme', 'smart-log', device_path] if use_sudo else ['nvme', 'smart-log', device_path]
+
             try:
                 temp_result = subprocess.run(
-                    ['sudo', 'nvme', 'smart-log', device_path],
+                    nvme_cmd,
                     capture_output=True,
                     text=True,
                     timeout=5
