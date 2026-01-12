@@ -244,6 +244,95 @@ def get_mellanox_temperature():
 
     return temperature
 
+def get_nvme_temperature():
+    """Detect and read temperature from NVMe devices"""
+    temperature = {}
+
+    # Check if nvme command is available
+    if not shutil.which('nvme'):
+        logger.debug("nvme command not found, NVMe temperature detection skipped")
+        return temperature
+
+    logger.info("NVMe CLI detected, checking for NVMe devices")
+
+    # Find all NVMe devices
+    try:
+        # Get list of NVMe devices
+        devices_result = subprocess.run(
+            ['ls', '/dev/nvme*'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning("Timeout while running ls to detect NVMe devices")
+        return temperature
+    except Exception as e:
+        logger.warning(f"Error running ls to detect NVMe devices: {str(e)}")
+        return temperature
+
+    if devices_result.returncode != 0 or not devices_result.stdout.strip():
+        logger.debug("No NVMe devices found")
+        return temperature
+
+    device_lines = devices_result.stdout.strip().split('\n')
+    for device_line in device_lines:
+        if device_line.strip():
+            device_path = device_line.strip()
+            # Extract device name (e.g., /dev/nvme0n1 -> nvme0)
+            device_name = device_path.replace('/dev/', '')
+            # Remove partition suffix if present (e.g., nvme0n1 -> nvme0)
+            device_name = re.sub(r'n\d+$', '', device_name)
+
+            # Try to read temperature using nvme smart-log
+            try:
+                temp_result = subprocess.run(
+                    ['sudo', 'nvme', 'smart-log', device_path],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+            except subprocess.TimeoutExpired:
+                logger.warning(f"nvme smart-log timed out for {device_path}")
+                continue
+            except Exception as e:
+                logger.warning(f"Error reading temperature for {device_path}: {str(e)}")
+                continue
+
+            if temp_result.returncode == 0 and temp_result.stdout.strip():
+                raw_output = temp_result.stdout.strip()
+                # Parse temperature sensors
+                sensor_temps = []
+                for line in raw_output.split('\n'):
+                    if 'Temperature Sensor' in line:
+                        # Extract temperature value (e.g., "Temperature Sensor 1           : 48 C (321 Kelvin)")
+                        # Match the temperature value followed by ' C'
+                        match = re.search(r'([0-9]+)\s+C', line)
+                        if match:
+                            try:
+                                temp_celsius = float(match.group(1))
+                                sensor_temps.append(temp_celsius)
+                            except ValueError:
+                                logger.warning(f"Could not parse temperature from line: {line!r}")
+                                continue
+
+                if sensor_temps:
+                    # Use max temperature from all sensors
+                    max_temp = max(sensor_temps)
+                    sensor_key = f"nvme_{device_name}"
+                    # Store with higher precision to preserve decimal places
+                    # Include default max and crit values for NVMe sensors
+                    temperature[sensor_key] = {
+                        'temp': max_temp * 1000.0,  # Store in millidegrees for consistency
+                        'max': 84,  # Default max temperature
+                        'crit': 100  # Default critical temperature
+                    }
+                    logger.info(f"Found NVMe device temperature: {device_name} = {max_temp:.2f}°C (max of {len(sensor_temps)} sensors)")
+            elif temp_result.returncode != 0:
+                logger.warning(f"nvme smart-log failed for {device_path}: {temp_result.stderr}")
+
+    return temperature
+
 class TemperatureService(object):
 
     def __init__(self):
@@ -264,6 +353,9 @@ class TemperatureService(object):
         # Check for Mellanox NICs with MLNX_OFED
         mellanox_temperatures = get_mellanox_temperature()
         self._temperature.update(mellanox_temperatures)
+        # Check for NVMe devices
+        nvme_temperatures = get_nvme_temperature()
+        self._temperature.update(nvme_temperatures)
         if not self._temperature:
             logger.warning("Temperature not folder found!")
         # Sort all sensors
@@ -280,6 +372,16 @@ class TemperatureService(object):
                 if name in mellanox_temps:
                     # Read Mellanox sensor with default max/crit values
                     values = read_sensor_value(mellanox_temps[name], sensor_type='mellanox')
+                else:
+                    # Sensor not found, mark as offline
+                    values = {'temp': TEMPERATURE_OFFLINE, 'max': 84, 'crit': 100, 'online': False}
+            # Check if this is a NVMe sensor that needs fresh data
+            elif name.startswith('nvme_') and isinstance(sensor.get('temp'), (int, float)):
+                # Get current NVMe temperature
+                nvme_temps = get_nvme_temperature()
+                if name in nvme_temps:
+                    # Read NVMe sensor with default max/crit values
+                    values = read_sensor_value(nvme_temps[name], sensor_type='generic')
                 else:
                     # Sensor not found, mark as offline
                     values = {'temp': TEMPERATURE_OFFLINE, 'max': 84, 'crit': 100, 'online': False}
