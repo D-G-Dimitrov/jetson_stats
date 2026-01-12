@@ -59,10 +59,26 @@ def read_sensor_value(sensor, sensor_type='generic', default_max=84, default_cri
         temp_value = sensor['temp'] / 1000.0
         values['temp'] = temp_value
         # Copy max and crit values if they exist
+        # Note: For Mellanox sensors, max/crit could be in either millidegrees or Celsius
+        # We need to check if the value is large enough to be in millidegrees (> 1000)
         if 'max' in sensor:
-            values['max'] = sensor['max'] / 1000.0 if isinstance(sensor['max'], (int, float)) else sensor['max']
+            if isinstance(sensor['max'], (int, float)):
+                # Convert from millidegrees to Celsius if the value is large
+                if sensor['max'] > 1000:
+                    values['max'] = sensor['max'] / 1000.0
+                else:
+                    values['max'] = sensor['max']
+            else:
+                values['max'] = sensor['max']
         if 'crit' in sensor:
-            values['crit'] = sensor['crit'] / 1000.0 if isinstance(sensor['crit'], (int, float)) else sensor['crit']
+            if isinstance(sensor['crit'], (int, float)):
+                # Convert from millidegrees to Celsius if the value is large
+                if sensor['crit'] > 1000:
+                    values['crit'] = sensor['crit'] / 1000.0
+                else:
+                    values['crit'] = sensor['crit']
+            else:
+                values['crit'] = sensor['crit']
         # Add default max and crit values if not present
         if 'max' not in values:
             values['max'] = default_max
@@ -227,14 +243,14 @@ def get_mellanox_temperature():
                         temp_value_str = match.group(1)
                         try:
                             temp_celsius = float(temp_value_str)
-                            # Use PCI bus address as sensor name to identify multiple devices
-                            sensor_key = f"mlx_{bus_addr.replace(':', '_').replace('.', '_')}"
+                            # Use simplified sensor name "mlx" for Mellanox devices
+                            sensor_key = "mlx"
                             # Store with higher precision to preserve decimal places
-                            # Include default max and crit values for Mellanox sensors
+                            # Include default max and crit values for Mellanox sensors (in Celsius)
                             temperature[sensor_key] = {
                                 'temp': temp_celsius * 1000.0,  # Store in millidegrees for consistency
-                                'max': 84,  # Default max temperature
-                                'crit': 100  # Default critical temperature
+                                'max': 84,  # Default max temperature in Celsius
+                                'crit': 100  # Default critical temperature in Celsius
                             }
                             logger.info(f"Found Mellanox NIC temperature: {device_name} = {temp_celsius:.2f}°C")
                         except ValueError:
@@ -366,7 +382,7 @@ class TemperatureService(object):
         # Read temperature from board
         for name, sensor in self._temperature.items():
             # Check if this is a Mellanox sensor that needs fresh data
-            if name.startswith('mlx_') and isinstance(sensor.get('temp'), (int, float)):
+            if name == 'mlx' and isinstance(sensor.get('temp'), (int, float)):
                 # Get current Mellanox temperature
                 mellanox_temps = get_mellanox_temperature()
                 if name in mellanox_temps:
