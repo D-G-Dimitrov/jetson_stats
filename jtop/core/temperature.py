@@ -274,84 +274,84 @@ def get_nvme_temperature():
     # Find all NVMe devices - look for controller devices (nvme0, nvme1, etc.)
     # not partition devices (nvme0n1, nvme0n2, etc.)
     try:
-        # Get list of NVMe controller devices
-        devices_result = subprocess.run(
-            ['ls', '/dev/nvme[0-9]*'],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-    except subprocess.TimeoutExpired:
-        logger.warning("Timeout while running ls to detect NVMe devices")
-        return temperature
+        # List all devices in /dev and filter for NVMe controllers
+        # We need to do this manually since shell globbing doesn't work in subprocess
+        devices = []
+        if os.path.isdir('/dev'):
+            for item in os.listdir('/dev'):
+                # Match nvme0, nvme1, etc. but not nvme0n1, nvme-fabrics, etc.
+                if re.match(r'^nvme\d+$', item):
+                    devices.append(os.path.join('/dev', item))
+        else:
+            logger.debug("No /dev directory found")
+            return temperature
+
+        if not devices:
+            logger.debug("No NVMe devices found")
+            return temperature
+
     except Exception as e:
-        logger.warning(f"Error running ls to detect NVMe devices: {str(e)}")
+        logger.warning(f"Error detecting NVMe devices: {str(e)}")
         return temperature
 
-    if devices_result.returncode != 0 or not devices_result.stdout.strip():
-        logger.debug("No NVMe devices found")
-        return temperature
+    for device_path in devices:
+        # Extract device name (e.g., /dev/nvme0 -> nvme0)
+        device_name = device_path.replace('/dev/', '')
+        # Remove partition suffix if present (e.g., nvme0n1 -> nvme0)
+        device_name = re.sub(r'n\d+$', '', device_name)
 
-    device_lines = devices_result.stdout.strip().split('\n')
-    for device_line in device_lines:
-        if device_line.strip():
-            device_path = device_line.strip()
-            # Extract device name (e.g., /dev/nvme0 -> nvme0)
-            device_name = device_path.replace('/dev/', '')
-            # Remove partition suffix if present (e.g., nvme0n1 -> nvme0)
-            device_name = re.sub(r'n\d+$', '', device_name)
+        # Try to read temperature using nvme smart-log
+        # Check if we're running with sudo privileges
+        # Only use sudo if not already running as root
+        # Note: When running as root (euid=0), we don't need sudo
+        use_sudo = os.geteuid() != 0
+        nvme_cmd = ['sudo', 'nvme', 'smart-log', device_path] if use_sudo else ['nvme', 'smart-log', device_path]
 
-            # Try to read temperature using nvme smart-log
-            # Check if we're running with sudo privileges
-            # Only use sudo if not already running as root
-            use_sudo = os.geteuid() != 0
-            nvme_cmd = ['sudo', 'nvme', 'smart-log', device_path] if use_sudo else ['nvme', 'smart-log', device_path]
+        try:
+            temp_result = subprocess.run(
+                nvme_cmd,
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+        except subprocess.TimeoutExpired:
+            logger.warning(f"nvme smart-log timed out for {device_path}")
+            continue
+        except Exception as e:
+            logger.warning(f"Error reading temperature for {device_path}: {str(e)}")
+            continue
 
-            try:
-                temp_result = subprocess.run(
-                    nvme_cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=5
-                )
-            except subprocess.TimeoutExpired:
-                logger.warning(f"nvme smart-log timed out for {device_path}")
-                continue
-            except Exception as e:
-                logger.warning(f"Error reading temperature for {device_path}: {str(e)}")
-                continue
+        if temp_result.returncode == 0 and temp_result.stdout.strip():
+            raw_output = temp_result.stdout.strip()
+            # Parse temperature sensors
+            sensor_temps = []
+            for line in raw_output.split('\n'):
+                if 'Temperature Sensor' in line:
+                    # Extract temperature value (e.g., "Temperature Sensor 1           : 48 C (321 Kelvin)")
+                    # Match the temperature value followed by ' C'
+                    match = re.search(r'([0-9]+)\s+C', line)
+                    if match:
+                        try:
+                            temp_celsius = float(match.group(1))
+                            sensor_temps.append(temp_celsius)
+                        except ValueError:
+                            logger.warning(f"Could not parse temperature from line: {line!r}")
+                            continue
 
-            if temp_result.returncode == 0 and temp_result.stdout.strip():
-                raw_output = temp_result.stdout.strip()
-                # Parse temperature sensors
-                sensor_temps = []
-                for line in raw_output.split('\n'):
-                    if 'Temperature Sensor' in line:
-                        # Extract temperature value (e.g., "Temperature Sensor 1           : 48 C (321 Kelvin)")
-                        # Match the temperature value followed by ' C'
-                        match = re.search(r'([0-9]+)\s+C', line)
-                        if match:
-                            try:
-                                temp_celsius = float(match.group(1))
-                                sensor_temps.append(temp_celsius)
-                            except ValueError:
-                                logger.warning(f"Could not parse temperature from line: {line!r}")
-                                continue
-
-                if sensor_temps:
-                    # Use max temperature from all sensors
-                    max_temp = max(sensor_temps)
-                    sensor_key = f"nvme_{device_name}"
-                    # Store with higher precision to preserve decimal places
-                    # Include default max and crit values for NVMe sensors
-                    temperature[sensor_key] = {
-                        'temp': max_temp * 1000.0,  # Store in millidegrees for consistency
-                        'max': 84,  # Default max temperature
-                        'crit': 100  # Default critical temperature
-                    }
-                    logger.info(f"Found NVMe device temperature: {device_name} = {max_temp:.2f}°C (max of {len(sensor_temps)} sensors)")
-            elif temp_result.returncode != 0:
-                logger.warning(f"nvme smart-log failed for {device_path}: {temp_result.stderr}")
+            if sensor_temps:
+                # Use max temperature from all sensors
+                max_temp = max(sensor_temps)
+                sensor_key = f"nvme_{device_name}"
+                # Store with higher precision to preserve decimal places
+                # Include default max and crit values for NVMe sensors
+                temperature[sensor_key] = {
+                    'temp': max_temp * 1000.0,  # Store in millidegrees for consistency
+                    'max': 84,  # Default max temperature
+                    'crit': 100  # Default critical temperature
+                }
+                logger.info(f"Found NVMe device temperature: {device_name} = {max_temp:.2f}°C (max of {len(sensor_temps)} sensors)")
+        elif temp_result.returncode != 0:
+            logger.warning(f"nvme smart-log failed for {device_path}: {temp_result.stderr}")
 
     return temperature
 

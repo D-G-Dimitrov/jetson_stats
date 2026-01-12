@@ -19,16 +19,16 @@ def test_nvme_fix():
     print("Testing NVMe temperature detection fix...")
     print("=" * 70)
 
-    # Mock the subprocess.run to simulate successful NVMe detection
+    # Mock os.listdir to simulate NVMe devices
+    def mock_listdir(path):
+        if path == '/dev':
+            return ['nvme0', 'nvme0n1', 'nvme0n2', 'nvme-fabrics', 'null', 'zero']
+        return []
+
+    # Mock subprocess.run to simulate nvme smart-log output
     def mock_run(cmd, **kwargs):
         mock_result = MagicMock()
         mock_result.returncode = 0
-
-        # Simulate ls /dev/nvme[0-9]* finding nvme0
-        if cmd[0] == 'ls' and '/dev/nvme[0-9]*' in cmd:
-            mock_result.stdout = '/dev/nvme0\n'
-            mock_result.stderr = ''
-            return mock_result
 
         # Simulate nvme smart-log output
         if 'nvme' in cmd and 'smart-log' in cmd:
@@ -66,11 +66,12 @@ Thermal Management T2 Total Time	: 0
         mock_result.stderr = 'Command not found'
         return mock_result
 
-    # Patch subprocess.run and os.geteuid()
-    with patch('subprocess.run', side_effect=mock_run):
-        with patch('os.geteuid', return_value=0):  # Simulate running as root
-            with patch('shutil.which', return_value='/usr/sbin/nvme'):
-                nvme_temps = get_nvme_temperature()
+    # Patch os.listdir, subprocess.run, and os.geteuid()
+    with patch('os.listdir', side_effect=mock_listdir):
+        with patch('subprocess.run', side_effect=mock_run):
+            with patch('os.geteuid', return_value=0):  # Simulate running as root
+                with patch('shutil.which', return_value='/usr/sbin/nvme'):
+                    nvme_temps = get_nvme_temperature()
 
     print(f"Result: {nvme_temps}")
     print()
