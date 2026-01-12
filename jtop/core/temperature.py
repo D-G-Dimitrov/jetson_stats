@@ -15,7 +15,6 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-
 from .common import cat, check_file
 import os
 import re
@@ -28,7 +27,6 @@ logger = logging.getLogger(__name__)
 TEMPERATURE_RE = re.compile(r'^temp(?P<num>\d+)_label$')
 TEMPERATURE_OFFLINE = -256
 
-
 def read_temperature(data):
     values = {}
     for name, path in data.items():
@@ -40,41 +38,18 @@ def read_temperature(data):
             values[name] = TEMPERATURE_OFFLINE
     return values
 
-def read_mellanox_sensor(sensor_name, sensor_data):
-    """
-    Read temperature from a Mellanox sensor.
-
-    Args:
-        sensor_name: Name of the sensor (e.g., 'mlx')
-        sensor_data: Sensor data dictionary
-
-    Returns:
-        Dictionary with temperature values including temp, max, crit, and online status
-    """
-    values = {'max': 84, 'crit': 100}  # Default values for Mellanox sensors
-
-    # Check if sensor value is already a number (from Mellanox)
-    if isinstance(sensor_data.get('temp'), (int, float)):
-        # Direct numeric value (stored in millidegrees)
-        temp_value = sensor_data['temp'] / 1000.0
-        values['temp'] = temp_value
-    else:
-        # Path-based sensor
-        temp_values = read_temperature(sensor_data)
-        values['temp'] = temp_values.get('temp', TEMPERATURE_OFFLINE)
-
-    values['online'] = values['temp'] != TEMPERATURE_OFFLINE
-    return values
-
-def read_sensor_value(sensor):
+def read_sensor_value(sensor, sensor_type='generic', default_max=84, default_crit=100):
     """
     Read sensor value and convert to appropriate format.
 
     Args:
         sensor: Sensor dictionary containing temperature data
+        sensor_type: Type of sensor ('generic', 'mellanox')
+        default_max: Default maximum temperature for this sensor type
+        default_crit: Default critical temperature for this sensor type
 
     Returns:
-        Dictionary with temperature value and online status
+        Dictionary with temperature value, max, crit, and online status
     """
     values = {}
 
@@ -90,9 +65,9 @@ def read_sensor_value(sensor):
             values['crit'] = sensor['crit'] / 1000.0 if isinstance(sensor['crit'], (int, float)) else sensor['crit']
         # Add default max and crit values if not present
         if 'max' not in values:
-            values['max'] = 84  # Default max temperature
+            values['max'] = default_max
         if 'crit' not in values:
-            values['crit'] = 100  # Default critical temperature
+            values['crit'] = default_crit
         values['online'] = True
     else:
         # Path-based sensor
@@ -102,10 +77,14 @@ def read_sensor_value(sensor):
             values['max'] = sensor['max']
         if 'crit' in sensor:
             values['crit'] = sensor['crit']
+        # Add default max and crit values if not present
+        if 'max' not in values:
+            values['max'] = default_max
+        if 'crit' not in values:
+            values['crit'] = default_crit
         values['online'] = values['temp'] != TEMPERATURE_OFFLINE
 
     return values
-
 
 def get_virtual_thermal_temperature(thermal_path):
     temperature = {}
@@ -136,7 +115,6 @@ def get_virtual_thermal_temperature(thermal_path):
                 logger.info("Found thermal \"{name}\" in {path}".format(name=name, path=os.path.basename(thermal_path)))
     # Sort all temperatures
     return temperature
-
 
 def get_hwmon_thermal_system(root_dir):
     sensor_name = {}
@@ -249,8 +227,8 @@ def get_mellanox_temperature():
                         temp_value_str = match.group(1)
                         try:
                             temp_celsius = float(temp_value_str)
-                            # Shorten the sensor name to avoid long display names
-                            sensor_key = "mlx"
+                            # Use PCI bus address as sensor name to identify multiple devices
+                            sensor_key = f"mlx_{bus_addr.replace(':', '_').replace('.', '_')}"
                             # Store with higher precision to preserve decimal places
                             # Include default max and crit values for Mellanox sensors
                             temperature[sensor_key] = {
@@ -265,7 +243,6 @@ def get_mellanox_temperature():
                         logger.warning(f"mget_temp failed for {bus_addr}: {temp_result.stderr}")
 
     return temperature
-
 
 class TemperatureService(object):
 
@@ -297,12 +274,12 @@ class TemperatureService(object):
         # Read temperature from board
         for name, sensor in self._temperature.items():
             # Check if this is a Mellanox sensor that needs fresh data
-            if name == 'mlx' and isinstance(sensor.get('temp'), (int, float)):
+            if name.startswith('mlx_') and isinstance(sensor.get('temp'), (int, float)):
                 # Get current Mellanox temperature
                 mellanox_temps = get_mellanox_temperature()
-                if 'mlx' in mellanox_temps:
+                if name in mellanox_temps:
                     # Read Mellanox sensor with default max/crit values
-                    values = read_mellanox_sensor(name, mellanox_temps[name])
+                    values = read_sensor_value(mellanox_temps[name], sensor_type='mellanox')
                 else:
                     # Sensor not found, mark as offline
                     values = {'temp': TEMPERATURE_OFFLINE, 'max': 84, 'crit': 100, 'online': False}
