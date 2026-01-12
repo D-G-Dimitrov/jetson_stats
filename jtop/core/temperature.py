@@ -271,11 +271,12 @@ def get_nvme_temperature():
 
     logger.info("NVMe CLI detected, checking for NVMe devices")
 
-    # Find all NVMe devices
+    # Find all NVMe devices - look for controller devices (nvme0, nvme1, etc.)
+    # not partition devices (nvme0n1, nvme0n2, etc.)
     try:
-        # Get list of NVMe devices
+        # Get list of NVMe controller devices
         devices_result = subprocess.run(
-            ['ls', '/dev/nvme*'],
+            ['ls', '/dev/nvme[0-9]*'],
             capture_output=True,
             text=True,
             timeout=5
@@ -295,13 +296,14 @@ def get_nvme_temperature():
     for device_line in device_lines:
         if device_line.strip():
             device_path = device_line.strip()
-            # Extract device name (e.g., /dev/nvme0n1 -> nvme0)
+            # Extract device name (e.g., /dev/nvme0 -> nvme0)
             device_name = device_path.replace('/dev/', '')
             # Remove partition suffix if present (e.g., nvme0n1 -> nvme0)
             device_name = re.sub(r'n\d+$', '', device_name)
 
             # Try to read temperature using nvme smart-log
             # Check if we're running with sudo privileges
+            # Only use sudo if not already running as root
             use_sudo = os.geteuid() != 0
             nvme_cmd = ['sudo', 'nvme', 'smart-log', device_path] if use_sudo else ['nvme', 'smart-log', device_path]
 
