@@ -49,11 +49,13 @@ sudo apt-get install nvme-cli
    Temperature Sensor 2           : 54 C (327 Kelvin)
    ```
 
-3. **Run the test script**:
+3. **Run the test script with sudo** (required for NVMe access):
    ```bash
-   python3 test_nvme_on_jetson.py
+   sudo python3 test_nvme_on_jetson.py
    ```
    This will show all detected temperature sensors including NVMe sensors.
+
+   **Important**: The NVMe smart-log command requires sudo privileges, so the test script must be run with sudo.
 
 ### Method 2: Integration Test
 
