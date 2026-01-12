@@ -2,6 +2,7 @@
 # -*- coding: UTF-8 -*-
 # Test script to verify NVMe temperature on Jetson device
 # Run this script on your Jetson device with NVMe SSD installed
+# NOTE: This script must be run with sudo privileges to access NVMe devices
 
 import sys
 import os
@@ -17,6 +18,12 @@ def test_nvme_on_jetson():
     """
     print("Testing NVMe temperature on Jetson device...")
     print("=" * 70)
+
+    # Check if running with sudo
+    if os.geteuid() != 0:
+        print("⚠️  WARNING: This script should be run with sudo privileges")
+        print("   Run: sudo python3 test_nvme_on_jetson.py")
+        print()
 
     # Create TemperatureService instance
     temp_service = TemperatureService()
@@ -38,6 +45,7 @@ def test_nvme_on_jetson():
         print("1. Check if NVMe device exists: ls /dev/nvme*")
         print("2. Check if nvme-cli is installed: sudo apt-get install nvme-cli")
         print("3. Test manual reading: sudo nvme smart-log /dev/nvme0")
+        print("4. Ensure you're running this script with sudo")
         return False
 
     print(f"✅ Found {len(nvme_sensors)} NVMe sensor(s):")
