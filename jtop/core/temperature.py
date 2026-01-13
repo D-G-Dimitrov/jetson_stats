@@ -341,7 +341,7 @@ def get_nvme_temperature():
             if sensor_temps:
                 # Use max temperature from all sensors
                 max_temp = max(sensor_temps)
-                sensor_key = f"nvme_{device_name}"
+                sensor_key = device_name
                 # Store with higher precision to preserve decimal places
                 # Include default max and crit values for NVMe sensors
                 temperature[sensor_key] = {
@@ -398,7 +398,7 @@ class TemperatureService(object):
                     # Sensor not found, mark as offline
                     values = {'temp': TEMPERATURE_OFFLINE, 'max': 84, 'crit': 100, 'online': False}
             # Check if this is a NVMe sensor that needs fresh data
-            elif name.startswith('nvme_') and isinstance(sensor.get('temp'), (int, float)):
+            elif re.match(r'^nvme\d+$', name) and isinstance(sensor.get('temp'), (int, float)):
                 # Get current NVMe temperature
                 nvme_temps = get_nvme_temperature()
                 if name in nvme_temps:
