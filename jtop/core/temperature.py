@@ -323,33 +323,32 @@ def get_nvme_temperature():
 
         if temp_result.returncode == 0 and temp_result.stdout.strip():
             raw_output = temp_result.stdout.strip()
-            # Parse temperature sensors
-            sensor_temps = []
+            # Parse first temperature reading from main output (e.g., "temperature				: 48 C (321 Kelvin)")
+            temp_found = False
             for line in raw_output.split('\n'):
-                if 'Temperature Sensor' in line:
-                    # Extract temperature value (e.g., "Temperature Sensor 1           : 48 C (321 Kelvin)")
+                if line.strip().startswith('temperature'):
+                    # Extract temperature value (e.g., "temperature				: 48 C (321 Kelvin)")
                     # Match the temperature value followed by ' C'
                     match = re.search(r'([0-9]+)\s+C', line)
                     if match:
                         try:
                             temp_celsius = float(match.group(1))
-                            sensor_temps.append(temp_celsius)
+                            sensor_key = device_name
+                            # Store with higher precision to preserve decimal places
+                            # Include default max and crit values for NVMe sensors
+                            temperature[sensor_key] = {
+                                'temp': temp_celsius * 1000.0,  # Store in millidegrees for consistency
+                                'max': 84,  # Default max temperature
+                                'crit': 100  # Default critical temperature
+                            }
+                            logger.info(f"Found NVMe device temperature: {device_name} = {temp_celsius:.2f}°C")
+                            temp_found = True
+                            break
                         except ValueError:
                             logger.warning(f"Could not parse temperature from line: {line!r}")
-                            continue
 
-            if sensor_temps:
-                # Use max temperature from all sensors
-                max_temp = max(sensor_temps)
-                sensor_key = device_name
-                # Store with higher precision to preserve decimal places
-                # Include default max and crit values for NVMe sensors
-                temperature[sensor_key] = {
-                    'temp': max_temp * 1000.0,  # Store in millidegrees for consistency
-                    'max': 84,  # Default max temperature
-                    'crit': 100  # Default critical temperature
-                }
-                logger.info(f"Found NVMe device temperature: {device_name} = {max_temp:.2f}°C (max of {len(sensor_temps)} sensors)")
+            if not temp_found:
+                logger.debug(f"No temperature reading found in smart-log output for {device_path}")
         elif temp_result.returncode != 0:
             logger.warning(f"nvme smart-log failed for {device_path}: {temp_result.stderr}")
 
