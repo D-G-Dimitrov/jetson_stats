@@ -4,13 +4,13 @@
 # Run this script on your Jetson device with NVMe SSD installed
 # NOTE: This script must be run with sudo privileges to access NVMe devices
 
+from jtop.core.temperature import TemperatureService
 import sys
 import os
 
 # Add the current directory to the path to import jtop
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from jtop.core.temperature import TemperatureService
 
 def test_nvme_on_jetson():
     """
@@ -36,7 +36,7 @@ def test_nvme_on_jetson():
 
     # Filter NVMe sensors
     nvme_sensors = {name: data for name, data in all_sensors.items()
-                   if name.startswith('nvme_')}
+                    if name.startswith('nvme_')}
 
     if not nvme_sensors:
         print("No NVMe sensors detected.")
@@ -64,6 +64,7 @@ def test_nvme_on_jetson():
     print("=" * 70)
 
     return True
+
 
 if __name__ == "__main__":
     try:

@@ -2,6 +2,7 @@
 # -*- coding: UTF-8 -*-
 # Test script to verify NVMe temperature detection fix
 
+from jtop.core.temperature import get_nvme_temperature
 import sys
 import os
 import subprocess
@@ -10,7 +11,6 @@ from unittest.mock import patch, MagicMock
 # Add the current directory to the path to import jtop
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from jtop.core.temperature import get_nvme_temperature
 
 def test_nvme_fix():
     """
@@ -98,6 +98,7 @@ Thermal Management T2 Total Time	: 0
         print(f"\n❌ Temperature value is incorrect: {actual_temp:.2f}°C (expected {expected_temp:.2f}°C)")
         return False
 
+
 def test_device_path_handling():
     """
     Test that device path handling works correctly
@@ -131,6 +132,7 @@ def test_device_path_handling():
             all_passed = False
 
     return all_passed
+
 
 if __name__ == "__main__":
     try:

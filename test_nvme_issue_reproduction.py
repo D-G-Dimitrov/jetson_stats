@@ -2,13 +2,13 @@
 # -*- coding: UTF-8 -*-
 # Test to reproduce the NVMe temperature detection issue
 
+from jtop.core.temperature import TemperatureService, get_nvme_temperature
 import sys
 import os
 
 # Add the current directory to the path to import jtop
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from jtop.core.temperature import TemperatureService, get_nvme_temperature
 
 def test_issue_reproduction():
     """
@@ -29,7 +29,7 @@ def test_issue_reproduction():
 
     print(f"   Total sensors detected: {len(all_sensors)}")
     nvme_sensors = {name: data for name, data in all_sensors.items()
-                   if name.startswith('nvme_')}
+                    if name.startswith('nvme_')}
     print(f"   NVMe sensors found: {len(nvme_sensors)}")
 
     if nvme_sensors:
@@ -47,6 +47,7 @@ def test_issue_reproduction():
             print(f"     {key}: {value}")
 
     print("\n" + "=" * 70)
+
 
 if __name__ == "__main__":
     try:

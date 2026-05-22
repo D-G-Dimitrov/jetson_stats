@@ -4,13 +4,13 @@
 Test script to verify NVMe sensor name fix
 """
 
+from jtop.core.temperature import get_nvme_temperature
 import sys
 import os
 
 # Add the jtop module to the path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from jtop.core.temperature import get_nvme_temperature
 
 def test_nvme_sensor_name():
     """Test that NVMe sensor names are correctly formatted as 'nvme0' instead of 'nvme_nvme0'"""
@@ -57,6 +57,7 @@ Temperature Sensor 2       : 46 C (319 Kelvin)
                     return False
 
     return False
+
 
 if __name__ == '__main__':
     print("Testing NVMe sensor name format...")

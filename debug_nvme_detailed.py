@@ -10,6 +10,7 @@ import shutil
 # Add the current directory to the path to import jtop
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+
 def debug_nvme_detection():
     """
     Detailed debugging of NVMe temperature detection
@@ -77,7 +78,7 @@ def debug_nvme_detection():
         if nvme_temps:
             print("   ✓ NVMe temperatures detected!")
             for name, data in nvme_temps.items():
-                print(f"     {name}: {data['temp']/1000.0:.2f}°C")
+                print(f"     {name}: {data['temp'] / 1000.0:.2f}°C")
         else:
             print("   ✗ No NVMe temperatures detected")
     except Exception as e:
@@ -94,7 +95,7 @@ def debug_nvme_detection():
 
         print(f"   Total sensors: {len(all_sensors)}")
         nvme_sensors = {name: data for name, data in all_sensors.items()
-                       if name.startswith('nvme_')}
+                        if name.startswith('nvme_')}
         print(f"   NVMe sensors: {len(nvme_sensors)}")
 
         if nvme_sensors:
@@ -117,6 +118,7 @@ def debug_nvme_detection():
         traceback.print_exc()
 
     print("\n" + "=" * 70)
+
 
 if __name__ == "__main__":
     try:

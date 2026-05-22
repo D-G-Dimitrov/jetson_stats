@@ -6,9 +6,10 @@ from the main "temperature" field, not from individual sensor readings.
 
 import re
 
+
 def test_temperature_parsing():
     """Test the temperature parsing logic used in get_nvme_temperature()"""
-    
+
     # Sample output from nvme smart-log
     sample_output = """Smart Log for NVME device:nvme0 namespace-id:ffffffff
 critical_warning			: 0
@@ -40,7 +41,7 @@ Thermal Management T2 Total Time	: 0"""
     # This is the exact logic from get_nvme_temperature()
     temp_found = False
     extracted_temp = None
-    
+
     for line in sample_output.split('\n'):
         if line.strip().startswith('temperature'):
             # Extract temperature value (e.g., "temperature				: 48 C (321 Kelvin)")
@@ -55,7 +56,7 @@ Thermal Management T2 Total Time	: 0"""
                     break
                 except ValueError:
                     print(f"✗ Could not parse temperature from line: {line!r}")
-    
+
     if temp_found:
         print(f"\n✓ SUCCESS: Extracted temperature = {extracted_temp}°C")
         print(f"✓ This matches the expected value from the main 'temperature' field")
@@ -65,55 +66,57 @@ Thermal Management T2 Total Time	: 0"""
         print(f"\n✗ FAILED: No temperature found")
         return False
 
+
 def test_equivalent_command():
     """Verify the logic is equivalent to: grep "^temperature" | awk '{print $3}'"""
-    
+
     sample_output = """temperature				: 48 C (321 Kelvin)
 Temperature Sensor 1           : 77 C (350 Kelvin)
 Temperature Sensor 2           : 65 C (338 Kelvin)"""
-    
+
     # Simulate: grep "^temperature"
     lines_starting_with_temperature = [
-        line for line in sample_output.split('\n') 
+        line for line in sample_output.split('\n')
         if line.strip().startswith('temperature')
     ]
-    
-    print("\n" + "="*60)
+
+    print("\n" + "=" * 60)
     print("Testing equivalence to: grep '^temperature' | awk '{print $3}'")
-    print("="*60)
-    
+    print("=" * 60)
+
     for line in lines_starting_with_temperature:
         print(f"\nLine matching '^temperature': {line.strip()}")
-        
+
         # Simulate: awk '{print $3}'
         parts = line.strip().split()
         if len(parts) >= 3:
             awk_value = parts[2]  # 0-indexed, so 3rd field is index 2
             print(f"  awk '{{print $3}}' would extract: '{awk_value}'")
-            
+
             # Now test our regex approach
             match = re.search(r'([0-9]+)\s+C', line)
             if match:
                 regex_value = match.group(1)
                 print(f"  Our regex extracts: '{regex_value}'")
-                
+
                 if awk_value == regex_value:
                     print(f"  ✓ Values match!")
                 else:
                     print(f"  ✗ Values don't match!")
 
+
 if __name__ == '__main__':
-    print("="*60)
+    print("=" * 60)
     print("Testing NVMe Temperature Extraction Logic")
-    print("="*60)
-    
+    print("=" * 60)
+
     result = test_temperature_parsing()
     test_equivalent_command()
-    
-    print("\n" + "="*60)
+
+    print("\n" + "=" * 60)
     if result:
         print("CONCLUSION: The current implementation is CORRECT")
         print("It only extracts the first temperature from the main 'temperature' field")
     else:
         print("CONCLUSION: The implementation needs fixing")
-    print("="*60)
+    print("=" * 60)

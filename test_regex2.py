@@ -42,8 +42,8 @@ for line in mock_output.split('\n'):
         for i, char in enumerate(line):
             if char == ':':
                 print(f"    Position {i}: '{char}'")
-                start = max(0, i-10)
-                end = min(len(line), i+20)
+                start = max(0, i - 10)
+                end = min(len(line), i + 20)
                 print(f"    Context: {line[start:end]!r}")
         print()
 

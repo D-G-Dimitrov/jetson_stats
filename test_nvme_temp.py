@@ -2,13 +2,13 @@
 # -*- coding: UTF-8 -*-
 # Test script for NVMe temperature reading functionality
 
+from jtop.core.temperature import get_nvme_temperature
 import sys
 import os
 
 # Add the current directory to the path to import jtop
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from jtop.core.temperature import get_nvme_temperature
 
 def test_nvme_temperature():
     """Test NVMe temperature reading functionality"""
@@ -39,6 +39,7 @@ def test_nvme_temperature():
     print("=" * 60)
     print("✓ NVMe temperature reading test completed successfully!")
     return True
+
 
 if __name__ == "__main__":
     try:

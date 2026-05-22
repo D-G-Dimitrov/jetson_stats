@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 TEMPERATURE_RE = re.compile(r'^temp(?P<num>\d+)_label$')
 TEMPERATURE_OFFLINE = -256
 
+
 def read_temperature(data):
     values = {}
     for name, path in data.items():
@@ -37,6 +38,7 @@ def read_temperature(data):
             # If negative sensor offline
             values[name] = TEMPERATURE_OFFLINE
     return values
+
 
 def read_sensor_value(sensor, sensor_type='generic', default_max=84, default_crit=100):
     """
@@ -102,6 +104,7 @@ def read_sensor_value(sensor, sensor_type='generic', default_max=84, default_cri
 
     return values
 
+
 def get_virtual_thermal_temperature(thermal_path):
     temperature = {}
     # Find all thermal zone available
@@ -131,6 +134,7 @@ def get_virtual_thermal_temperature(thermal_path):
                 logger.info("Found thermal \"{name}\" in {path}".format(name=name, path=os.path.basename(thermal_path)))
     # Sort all temperatures
     return temperature
+
 
 def get_hwmon_thermal_system(root_dir):
     sensor_name = {}
@@ -173,6 +177,7 @@ def get_hwmon_thermal_system(root_dir):
             if sensor:
                 sensor_name[raw_name] = sensor
     return sensor_name
+
 
 def get_mellanox_temperature():
     """Detect and read temperature from Mellanox NICs with MLNX_OFED support"""
@@ -259,6 +264,7 @@ def get_mellanox_temperature():
                         logger.warning(f"mget_temp failed for {bus_addr}: {temp_result.stderr}")
 
     return temperature
+
 
 def get_nvme_temperature():
     """Detect and read temperature from NVMe devices"""
@@ -353,6 +359,7 @@ def get_nvme_temperature():
             logger.warning(f"nvme smart-log failed for {device_path}: {temp_result.stderr}")
 
     return temperature
+
 
 class TemperatureService(object):
 

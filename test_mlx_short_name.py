@@ -4,12 +4,12 @@
 Test script to verify Mellanox sensor name shortening and max/crit values.
 """
 
+from jtop.core.temperature import get_mellanox_temperature, TemperatureService
+from unittest.mock import patch, MagicMock
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from unittest.mock import patch, MagicMock
-from jtop.core.temperature import get_mellanox_temperature, TemperatureService
 
 def test_mellanox_sensor_name():
     """Test that Mellanox sensor name is shortened to 'mlx'"""
@@ -65,6 +65,7 @@ def test_mellanox_sensor_name():
     print(f"  Crit: {mellanox_temps['mlx']['crit']}°C")
     return True
 
+
 def test_temperature_service_with_mlx():
     """Test TemperatureService with Mellanox sensor"""
     print("\nTesting TemperatureService with Mellanox sensor...")
@@ -107,7 +108,7 @@ def test_temperature_service_with_mlx():
     assert status['mlx']['crit'] == 100, f"Expected crit=100°C, got {status['mlx']['crit']}°C"
 
     # Verify online status
-    assert status['mlx']['online'] == True, "Sensor should be online"
+    assert status['mlx']['online'], "Sensor should be online"
 
     print("✓ TemperatureService correctly handles 'mlx' sensor")
     print(f"  Temperature: {status['mlx']['temp']}°C")
@@ -115,6 +116,7 @@ def test_temperature_service_with_mlx():
     print(f"  Crit: {status['mlx']['crit']}°C")
     print(f"  Online: {status['mlx']['online']}")
     return True
+
 
 def test_multiple_mellanox_devices():
     """Test that multiple Mellanox devices use the same 'mlx' key"""
@@ -154,14 +156,15 @@ def test_multiple_mellanox_devices():
     print("✓ Multiple Mellanox devices correctly use single 'mlx' key")
     return True
 
+
 if __name__ == '__main__':
     try:
         test_mellanox_sensor_name()
         test_temperature_service_with_mlx()
         test_multiple_mellanox_devices()
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("✓ ALL TESTS PASSED!")
-        print("="*60)
+        print("=" * 60)
         print("\nSummary of changes:")
         print("1. Mellanox sensor name shortened from 'mlx_0005_01_00_0' to 'mlx'")
         print("2. Max temperature set to 84°C")

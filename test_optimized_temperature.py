@@ -4,6 +4,7 @@
 Test script to verify optimized temperature functionality
 """
 
+from jtop.core.temperature import TemperatureService, read_sensor_value, get_mellanox_temperature
 import sys
 import os
 import time
@@ -11,7 +12,6 @@ import time
 # Add the project root directory to the path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '.')))
 
-from jtop.core.temperature import TemperatureService, read_sensor_value, get_mellanox_temperature
 
 def test_sensor_value_function():
     """Test the unified read_sensor_value function"""
@@ -28,7 +28,7 @@ def test_sensor_value_function():
     assert result['temp'] == 44.0, f"Expected 44.0, got {result['temp']}"
     assert result['max'] == 84.0, f"Expected 84.0, got {result['max']}"
     assert result['crit'] == 100.0, f"Expected 100.0, got {result['crit']}"
-    assert result['online'] == True, "Expected online=True"
+    assert result['online'], "Expected online=True"
     print("✓ Numeric sensor values handled correctly")
 
     # Test with default values
@@ -41,6 +41,7 @@ def test_sensor_value_function():
 
     print("✓ read_sensor_value function test PASSED")
     print("=" * 60)
+
 
 def test_temperature_service():
     """Test TemperatureService with optimized code"""
@@ -90,6 +91,7 @@ def test_temperature_service():
     print("\n✓ TemperatureService test PASSED")
     print("=" * 60)
 
+
 def test_mellanox_naming():
     """Test that Mellanox sensors use PCI address in naming"""
     print("\nTesting Mellanox sensor naming...")
@@ -114,6 +116,7 @@ def test_mellanox_naming():
 
     print("✓ Mellanox naming test PASSED")
     print("=" * 60)
+
 
 def test_backward_compatibility():
     """Test that existing code still works with optimizations"""
@@ -147,6 +150,7 @@ def test_backward_compatibility():
     print(f"✓ All {len(status)} sensors maintain backward compatibility")
     print("✓ Backward compatibility test PASSED")
     print("=" * 60)
+
 
 if __name__ == "__main__":
     print("\n" + "=" * 60)

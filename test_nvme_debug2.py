@@ -2,6 +2,7 @@
 # -*- coding: UTF-8 -*-
 # Debug script to check NVMe temperature detection
 
+from jtop.core.temperature import get_nvme_temperature
 import sys
 import os
 import subprocess
@@ -9,7 +10,6 @@ import subprocess
 # Add the current directory to the path to import jtop
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from jtop.core.temperature import get_nvme_temperature
 
 def test_nvme_debug():
     """
@@ -84,9 +84,10 @@ def test_nvme_debug():
     else:
         print(f"✓ Found {len(nvme_temps)} NVMe sensor(s):")
         for name, data in nvme_temps.items():
-            print(f"  {name}: {data['temp']/1000.0:.2f}°C")
+            print(f"  {name}: {data['temp'] / 1000.0:.2f}°C")
 
     print("=" * 70)
+
 
 if __name__ == "__main__":
     try:

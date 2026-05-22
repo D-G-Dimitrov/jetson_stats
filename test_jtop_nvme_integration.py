@@ -2,6 +2,7 @@
 # -*- coding: UTF-8 -*-
 # Integration test for NVMe temperature in jtop
 
+from jtop import jtop
 import sys
 import os
 from unittest.mock import patch, MagicMock
@@ -10,7 +11,6 @@ import subprocess
 # Add the current directory to the path to import jtop
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from jtop import jtop
 
 def test_jtop_nvme_integration():
     """
@@ -67,7 +67,7 @@ Thermal Management T2 Total Time        : 0
         return MagicMock(returncode=0, stdout='', stderr='')
 
     with patch('jtop.core.temperature.shutil.which') as mock_which, \
-         patch('jtop.core.temperature.subprocess.run', side_effect=mock_run):
+            patch('jtop.core.temperature.subprocess.run', side_effect=mock_run):
 
         # Mock nvme command availability
         mock_which.return_value = '/usr/sbin/nvme'
@@ -82,7 +82,7 @@ Thermal Management T2 Total Time        : 0
 
         # Check if NVMe sensor was detected
         nvme_sensors = {name: sensor for name, sensor in temp_service._temperature.items()
-                       if name.startswith('nvme_')}
+                        if name.startswith('nvme_')}
         print(f"Found {len(nvme_sensors)} NVMe sensor(s):")
         for name in nvme_sensors:
             print(f"  - {name}")
@@ -99,7 +99,7 @@ Thermal Management T2 Total Time        : 0
 
         # Check if NVMe sensor is in status
         nvme_status = {name: data for name, data in status.items()
-                      if name.startswith('nvme_')}
+                       if name.startswith('nvme_')}
         print(f"NVMe sensors in status: {len(nvme_status)}")
         for name, data in nvme_status.items():
             print(f"  - {name}:")
@@ -140,6 +140,7 @@ Thermal Management T2 Total Time        : 0
         print("=" * 70)
 
         return True
+
 
 if __name__ == "__main__":
     try:

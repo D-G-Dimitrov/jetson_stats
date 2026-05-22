@@ -4,6 +4,7 @@
 
 import subprocess
 
+
 def test_ls_pattern():
     """
     Test if ls /dev/nvme[0-9]* finds the right devices
@@ -33,6 +34,7 @@ def test_ls_pattern():
         print("\nNo devices found")
 
     print("=" * 70)
+
 
 if __name__ == "__main__":
     test_ls_pattern()

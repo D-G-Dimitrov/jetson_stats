@@ -4,13 +4,13 @@
 Test script for Mellanox temperature detection
 """
 
+from jtop.core.temperature import get_mellanox_temperature
 import sys
 import os
 
 # Add the project root directory to the path to import jtop
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')))
 
-from jtop.core.temperature import get_mellanox_temperature
 
 def test_mellanox_detection():
     """Test Mellanox temperature detection"""
@@ -36,6 +36,7 @@ def test_mellanox_detection():
         print("\n✓ Test PASSED - No Mellanox NICs found (expected behavior)")
 
     print("=" * 60)
+
 
 if __name__ == "__main__":
     test_mellanox_detection()

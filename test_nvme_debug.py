@@ -2,6 +2,7 @@
 # -*- coding: UTF-8 -*-
 # Debug test for NVMe temperature reading functionality
 
+from jtop.core.temperature import get_nvme_temperature
 import sys
 import os
 from unittest.mock import patch, MagicMock
@@ -9,7 +10,6 @@ from unittest.mock import patch, MagicMock
 # Add the current directory to the path to import jtop
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from jtop.core.temperature import get_nvme_temperature
 
 def test_nvme_debug():
     """Debug NVMe temperature reading with mocked nvme command"""
@@ -45,7 +45,7 @@ Thermal Management T2 Total Time        : 0
 """
 
     with patch('jtop.core.temperature.shutil.which') as mock_which, \
-         patch('jtop.core.temperature.subprocess.run') as mock_run:
+            patch('jtop.core.temperature.subprocess.run') as mock_run:
 
         # Mock nvme command availability
         mock_which.return_value = '/usr/sbin/nvme'
@@ -85,6 +85,7 @@ Thermal Management T2 Total Time        : 0
             print(f"  - {name}")
 
         return True
+
 
 if __name__ == "__main__":
     try:

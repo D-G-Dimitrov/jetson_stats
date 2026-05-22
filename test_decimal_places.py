@@ -4,6 +4,7 @@
 Test script to verify temperature decimal places formatting
 """
 
+
 def test_temperature_formatting():
     """Test that temperatures are formatted with 2 decimal places"""
     print("Testing temperature formatting with 2 decimal places...")
@@ -27,6 +28,7 @@ def test_temperature_formatting():
     print("\n" + "=" * 60)
     print("✓ Test PASSED - Temperatures are formatted with 2 decimal places")
     print("=" * 60)
+
 
 if __name__ == "__main__":
     test_temperature_formatting()
