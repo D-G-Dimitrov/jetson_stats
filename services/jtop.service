@@ -15,11 +15,13 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 [Unit]
 Description=jtop service
-After=systemd-modules-load.service
+After=multi-user.target nvfancontrol.service
 
 [Service]
 # Type=exec
 Environment="JTOP_SERVICE=True"
+ExecStartPre=
+ExecStartPre=/bin/bash -c 'until [ -f /sys/devices/platform/bus@0/17000000.gpu/devfreq/17000000.gpu/available_frequencies ]; do sleep 1; done'
 ExecStart=/usr/local/bin/jtop --force
 Restart=on-failure
 RestartSec=10s
