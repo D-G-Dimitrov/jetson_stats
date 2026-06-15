@@ -411,8 +411,8 @@ class TemperatureService(object):
             else:
                 # Read sensor value using generic function
                 values = read_temperature(sensor)
-                # Status sensor
-                values['online'] = values['temp'] != TEMPERATURE_OFFLINE
+            # Status sensor
+            values['online'] = values['temp'] != TEMPERATURE_OFFLINE
             # Add sensor in dictionary
             status[name] = values
         return status
