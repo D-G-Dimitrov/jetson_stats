@@ -328,10 +328,9 @@ def get_nvme_temperature():
             # Parse first temperature reading from main output (e.g., "temperature				: 48 C (321 Kelvin)")
             temp_found = False
             for line in raw_output.split('\n'):
-                if line.strip().startswith('temperature'):
-                    # Extract temperature value (e.g., "temperature				: 48 C (321 Kelvin)")
-                    # Match the temperature value followed by ' C'
-                    match = re.search(r'([0-9]+)\s+C', line)
+                if 'temperature' in line.lower():
+                    # Extract the first numeric token on the line
+                    match = re.search(r'([-+]?(?:\d+(?:\.\d*)?|\.\d+))', line)
                     if match:
                         try:
                             temp_celsius = float(match.group(1))
@@ -350,7 +349,7 @@ def get_nvme_temperature():
                             logger.warning(f"Could not parse temperature from line: {line!r}")
 
             if not temp_found:
-                logger.debug(f"No temperature reading found in smart-log output for {device_path}")
+                logger.debug(f"No temperature reading found in smart-log output for {device_path}; stdout: {raw_output!r}, stderr: {temp_result.stderr!r}")
         elif temp_result.returncode != 0:
             logger.warning(f"nvme smart-log failed for {device_path}: {temp_result.stderr}")
 
