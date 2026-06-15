@@ -176,16 +176,72 @@ def get_hwmon_thermal_system(root_dir):
                 sensor_name[raw_name] = sensor
     return sensor_name
 
+def find_interface_for_bus_addr(bus_addr):
+    """Find network interface name for a given PCI bus address.
+
+    Args:
+        bus_addr: PCI bus address (e.g., "0005:01:00.0" or "0000:05:00.0")
+
+    Returns:
+        Interface name (e.g., "enP5p1s0np0") or None if not found.
+    """
+    try:
+        # Normalize bus address: remove leading zeros from domain if present
+        # E.g., "0005:01:00.0" -> also try "5:01:00.0"
+        bus_parts = bus_addr.split(':')
+        if len(bus_parts) == 3:
+            # bus_addr format: domain:bus:dev.func
+            domain, bus, devfunc = bus_parts
+            # Try both with and without leading zeros in domain and bus
+            domain_int = int(domain, 16)
+            bus_int = int(bus, 16)
+            bus_addr_variants = [
+                bus_addr,  # Original
+                "%d:%d:%s" % (domain_int, bus_int, devfunc),  # Without leading zeros in hex
+                "%04x:%02x:%s" % (domain_int, bus_int, devfunc),  # Standard format
+            ]
+        else:
+            bus_addr_variants = [bus_addr]
+
+        logger.debug("Looking for interface with bus address variants: %s" % (bus_addr_variants,))
+
+        for iface_dir in os.listdir('/sys/class/net'):
+            iface_path = os.path.join('/sys/class/net', iface_dir)
+            device_link = os.path.join(iface_path, 'device')
+            if os.path.islink(device_link):
+                real_path = os.path.realpath(device_link)
+                logger.debug("Interface %s -> device path: %s" % (iface_dir, real_path))
+                # Check if any variant of the bus address appears in the device path
+                for variant in bus_addr_variants:
+                    if variant in real_path:
+                        logger.debug("Found interface %s for bus address %s (matched variant: %s)" % (iface_dir, bus_addr, variant))
+                        return iface_dir
+    except Exception as e:
+        logger.debug("Error finding interface for bus %s: %s" % (bus_addr, str(e)))
+    logger.debug("No interface found for bus address %s" % (bus_addr,))
+    return None
+
 def get_mellanox_temperature():
-    """Detect and read temperature from Mellanox NICs with MLNX_OFED support"""
+    """Detect and read temperature from Mellanox NICs with MLNX_OFED support or ethtool.
+
+    Tries multiple methods in order:
+    1. mget_temp (part of MLNX_OFED)
+    2. ethtool -m <interface> (available on most Linux systems)
+    """
     temperature = {}
 
-    # Check if mget_temp is available (part of MLNX_OFED)
-    if not shutil.which('mget_temp'):
-        logger.debug("mget_temp not found, Mellanox temperature detection skipped")
+    # Check if at least one temperature detection method is available
+    has_mget_temp = shutil.which('mget_temp') is not None
+    has_ethtool = shutil.which('ethtool') is not None
+
+    if not (has_mget_temp or has_ethtool):
+        logger.debug("Neither mget_temp nor ethtool found, Mellanox temperature detection skipped")
         return temperature
 
-    logger.info("MLNX_OFED detected, using mget_temp for Mellanox NIC temperatures")
+    if has_mget_temp:
+        logger.info("MLNX_OFED detected, using mget_temp for Mellanox NIC temperatures")
+    if has_ethtool:
+        logger.info("ethtool detected, can use for Mellanox NIC temperature detection")
 
     # Find all Mellanox devices
     try:
@@ -208,6 +264,7 @@ def get_mellanox_temperature():
         return temperature
 
     device_lines = devices_result.stdout.strip().split('\n')
+    idx = 0
     for device_line in device_lines:
         if device_line.strip():
             # Extract device name and bus address
@@ -217,48 +274,149 @@ def get_mellanox_temperature():
                 device_name = ' '.join(parts[1:])
                 # Check if it's a ConnectX device
                 if 'ConnectX' in device_name or 'MT' in device_name:
-                    # Try to read temperature using mget_temp
-                    # Note: mget_temp must be runnable without sudo
-                    # Users should configure appropriate permissions or use sudo wrapper scripts
-                    try:
-                        temp_result = subprocess.run(
-                            ['mget_temp', '-d', bus_addr],
-                            capture_output=True,
-                            text=True,
-                            timeout=2
-                        )
-                    except subprocess.TimeoutExpired:
-                        logger.warning(f"mget_temp timed out for {bus_addr}")
-                        continue
-                    except Exception as e:
-                        logger.warning(f"Error reading temperature for {bus_addr}: {str(e)}")
-                        continue
+                    temp_celsius = None
+                    method_used = None
 
-                    if temp_result.returncode == 0 and temp_result.stdout.strip():
-                        raw_output = temp_result.stdout.strip()
-                        # Use only the first line and extract the first numeric token to be resilient to format changes
-                        first_line = raw_output.splitlines()[0]
-                        match = re.search(r'([-+]?(?:\d+(?:\.\d*)?|\.\d+))', first_line)
-                        if not match:
-                            logger.warning(f"Could not find numeric temperature in mget_temp output for {bus_addr}: {first_line!r}")
-                            continue
-                        temp_value_str = match.group(1)
+                    # Try method 1: mget_temp
+                    if has_mget_temp:
                         try:
-                            temp_celsius = float(temp_value_str)
-                            # Use simplified sensor name "mlx" for Mellanox devices
-                            sensor_key = "mlx"
-                            # Store with higher precision to preserve decimal places
-                            # Include default max and crit values for Mellanox sensors (in Celsius)
-                            temperature[sensor_key] = {
-                                'temp': temp_celsius * 1000.0,  # Store in millidegrees for consistency
-                                'max': 84,  # Default max temperature in Celsius
-                                'crit': 100  # Default critical temperature in Celsius
-                            }
-                            logger.info(f"Found Mellanox NIC temperature: {device_name} = {temp_celsius:.2f}°C")
-                        except ValueError:
-                            logger.warning(f"Could not parse temperature from mget_temp for {bus_addr}: {temp_value_str!r}")
-                    elif temp_result.returncode != 0:
-                        logger.warning(f"mget_temp failed for {bus_addr}: {temp_result.stderr}")
+                            temp_result = subprocess.run(
+                                ['mget_temp', '-d', bus_addr],
+                                capture_output=True,
+                                text=True,
+                                timeout=2
+                            )
+                            if temp_result.returncode == 0 and temp_result.stdout.strip():
+                                raw_output = temp_result.stdout.strip()
+                                # Extract the first numeric token from the first line
+                                first_line = raw_output.splitlines()[0]
+                                match = re.search(r'([-+]?(?:\d+(?:\.\d*)?|\.\d+))', first_line)
+                                if match:
+                                    try:
+                                        temp_celsius = float(match.group(1))
+                                        method_used = "mget_temp"
+                                    except ValueError:
+                                        logger.warning("Could not parse temperature from mget_temp for %s: %r" % (bus_addr, match.group(1)))
+                        except subprocess.TimeoutExpired:
+                            logger.warning("mget_temp timed out for %s" % (bus_addr,))
+                        except Exception as e:
+                            logger.debug("mget_temp error for %s: %s" % (bus_addr, str(e)))
+
+                    # Try method 2: ethtool -m <interface>
+                    if temp_celsius is None and has_ethtool:
+                        iface = find_interface_for_bus_addr(bus_addr)
+                        if iface:
+                            ethtool_result = None
+                            # First try without sudo
+                            try:
+                                logger.debug("Running: ethtool -m %s" % (iface,))
+                                ethtool_result = subprocess.run(
+                                    ['ethtool', '-m', iface],
+                                    capture_output=True,
+                                    text=True,
+                                    timeout=2
+                                )
+                                logger.debug("ethtool returncode=%d" % (ethtool_result.returncode,))
+                                if ethtool_result.returncode != 0:
+                                    logger.debug("ethtool stderr: %s" % (ethtool_result.stderr,))
+                            except Exception as e:
+                                logger.debug("ethtool error: %s" % (str(e),))
+
+                            # If failed, try with sudo
+                            if ethtool_result is None or ethtool_result.returncode != 0:
+                                try:
+                                    logger.debug("Running: sudo -n ethtool -m %s" % (iface,))
+                                    ethtool_result = subprocess.run(
+                                        ['sudo', '-n', 'ethtool', '-m', iface],
+                                        capture_output=True,
+                                        text=True,
+                                        timeout=2
+                                    )
+                                    logger.debug("sudo ethtool returncode=%d" % (ethtool_result.returncode,))
+                                    if ethtool_result.returncode != 0:
+                                        logger.debug("sudo ethtool stderr: %s" % (ethtool_result.stderr,))
+                                except subprocess.TimeoutExpired:
+                                    logger.debug("sudo ethtool timed out for %s" % (iface,))
+                                except Exception as e:
+                                    logger.debug("sudo ethtool error: %s" % (str(e),))
+
+                            # Parse temperature from output if we got it
+                            if ethtool_result and ethtool_result.returncode == 0 and ethtool_result.stdout.strip():
+                                raw_output = ethtool_result.stdout.strip()
+                                logger.debug("ethtool stdout (first 500 chars): %s" % (raw_output[:500],))
+                                # Parse temperature from output (e.g., "Module temperature : 30.97 degrees C")
+                                for line in raw_output.split('\n'):
+                                    if 'temperature' in line.lower():
+                                        logger.debug("Found temperature line: %s" % (line,))
+                                        match = re.search(r'([-+]?(?:\d+(?:\.\d*)?|\.\d+))', line)
+                                        if match:
+                                            try:
+                                                temp_celsius = float(match.group(1))
+                                                method_used = "ethtool"
+                                                logger.debug("Parsed temperature: %.2f°C" % (temp_celsius,))
+                                                break
+                                            except ValueError:
+                                                logger.warning("Could not parse temperature from ethtool for %s: %r" % (iface, match.group(1)))
+                        else:
+                            # Fallback: try ethtool on all network interfaces to find one with temperature
+                            logger.debug("Could not find interface for bus address %s, trying all interfaces" % (bus_addr,))
+                            try:
+                                for iface_dir in os.listdir('/sys/class/net'):
+                                    ethtool_result = None
+                                    # Try without sudo first
+                                    try:
+                                        ethtool_result = subprocess.run(
+                                            ['ethtool', '-m', iface_dir],
+                                            capture_output=True,
+                                            text=True,
+                                            timeout=2
+                                        )
+                                    except (subprocess.TimeoutExpired, Exception):
+                                        pass
+
+                                    # If failed, try with sudo
+                                    if ethtool_result is None or ethtool_result.returncode != 0:
+                                        try:
+                                            ethtool_result = subprocess.run(
+                                                ['sudo', '-n', 'ethtool', '-m', iface_dir],
+                                                capture_output=True,
+                                                text=True,
+                                                timeout=2
+                                            )
+                                        except (subprocess.TimeoutExpired, Exception):
+                                            continue
+
+                                    if ethtool_result and ethtool_result.returncode == 0 and ethtool_result.stdout.strip():
+                                        raw_output = ethtool_result.stdout.strip()
+                                        # Check if this interface reports Mellanox/module temperature
+                                        for line in raw_output.split('\n'):
+                                            if 'temperature' in line.lower() and ('module' in line.lower() or 'SFP' in line or 'QSFP' in line):
+                                                match = re.search(r'([-+]?(?:\d+(?:\.\d*)?|\.\d+))', line)
+                                                if match:
+                                                    try:
+                                                        temp_celsius = float(match.group(1))
+                                                        method_used = "ethtool (interface %s)" % (iface_dir,)
+                                                        logger.debug("Found Mellanox temperature via ethtool on interface %s" % (iface_dir,))
+                                                        break
+                                                    except ValueError:
+                                                        pass
+                                        if temp_celsius is not None:
+                                            break
+                            except Exception as e:
+                                logger.debug("Error trying all interfaces: %s" % (str(e),))
+
+                    # Store temperature if we successfully read it
+                    if temp_celsius is not None:
+                        sensor_key = "mlx%d" % (idx,)
+                        temperature[sensor_key] = {
+                            'temp': temp_celsius * 1000.0,
+                            'max': 84,
+                            'crit': 100
+                        }
+                        logger.info("Found Mellanox NIC temperature (via %s): %s = %.2f°C" % (method_used, device_name, temp_celsius))
+                        idx += 1
+                    else:
+                        logger.warning("Could not read temperature for Mellanox device %s at %s" % (device_name, bus_addr))
 
     return temperature
 
@@ -388,7 +546,8 @@ class TemperatureService(object):
         # Read temperature from board
         for name, sensor in self._temperature.items():
             # Check if this is a Mellanox sensor that needs fresh data
-            if name == 'mlx' and isinstance(sensor.get('temp'), (int, float)):
+            # Match mlx, mlx0, mlx1, etc.
+            if re.match(r'^mlx', name) and isinstance(sensor.get('temp'), (int, float)):
                 # Get current Mellanox temperature
                 mellanox_temps = get_mellanox_temperature()
                 if name in mellanox_temps:
