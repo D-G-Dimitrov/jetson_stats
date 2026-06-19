@@ -237,11 +237,6 @@ def get_mellanox_temperature():
         logger.debug("Neither mget_temp nor ethtool found, Mellanox temperature detection skipped")
         return temperature
 
-    if has_mget_temp:
-        logger.info("MLNX_OFED detected, using mget_temp for Mellanox NIC temperatures")
-    if has_ethtool:
-        logger.info("ethtool detected, can use for Mellanox NIC temperature detection")
-
     # Find all Mellanox devices
     try:
         # Get list of Mellanox devices
@@ -426,8 +421,6 @@ def get_nvme_temperature():
     if not shutil.which('nvme'):
         logger.debug("nvme command not found, NVMe temperature detection skipped")
         return temperature
-
-    logger.info("NVMe CLI detected, checking for NVMe devices")
 
     # Find all NVMe devices - look for controller devices (nvme0, nvme1, etc.)
     # not partition devices (nvme0n1, nvme0n2, etc.)
