@@ -128,8 +128,7 @@ def get_virtual_thermal_temperature(thermal_path):
             # Check if is readable and accessible
             if check_file(os.path.join(thermal_path, "temp")):
                 temperature[name] = {'temp': os.path.join(thermal_path, "temp")}
-                # Message detected
-                logger.info("Found thermal \"{name}\" in {path}".format(name=name, path=os.path.basename(thermal_path)))
+
     # Sort all temperatures
     return temperature
 
@@ -413,7 +412,6 @@ def get_mellanox_temperature():
                             'max': 84,
                             'crit': 100
                         }
-                        logger.info("Found Mellanox NIC temperature (via %s): %s = %.2f°C" % (method_used, device_name, temp_celsius))
                         idx += 1
                     else:
                         logger.warning("Could not read temperature for Mellanox device %s at %s" % (device_name, bus_addr))
@@ -500,7 +498,6 @@ def get_nvme_temperature():
                                 'max': 84,  # Default max temperature
                                 'crit': 100  # Default critical temperature
                             }
-                            logger.info(f"Found NVMe device temperature: {device_name} = {temp_celsius:.2f}°C")
                             temp_found = True
                             break
                         except ValueError:
