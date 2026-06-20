@@ -259,7 +259,7 @@ def get_mellanox_temperature():
                                 'max': 84,  # Default max temperature in Celsius
                                 'crit': 100  # Default critical temperature in Celsius
                             }
-                            logger.info(f"Found Mellanox NIC temperature: {device_name} = {temp_celsius:.2f}°C")
+
                         except ValueError:
                             logger.warning(f"Could not parse temperature from mget_temp for {bus_addr}: {temp_value_str!r}")
                     elif temp_result.returncode != 0:
