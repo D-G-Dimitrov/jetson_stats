@@ -192,8 +192,6 @@ def get_mellanox_temperature():
         logger.debug("mget_temp not found, Mellanox temperature detection skipped")
         return temperature
 
-    logger.info("MLNX_OFED detected, using mget_temp for Mellanox NIC temperatures")
-
     # Find all Mellanox devices
     try:
         # Get list of Mellanox devices
@@ -278,8 +276,6 @@ def get_nvme_temperature():
         logger.debug("nvme command not found, NVMe temperature detection skipped")
         return temperature
 
-    logger.info("NVMe CLI detected, checking for NVMe devices")
-
     # Find all NVMe devices - look for controller devices (nvme0, nvme1, etc.)
     # not partition devices (nvme0n1, nvme0n2, etc.)
     try:
@@ -350,7 +346,6 @@ def get_nvme_temperature():
                                 'max': 84,  # Default max temperature
                                 'crit': 100  # Default critical temperature
                             }
-                            logger.info(f"Found NVMe device temperature: {device_name} = {temp_celsius:.2f}°C")
                             temp_found = True
                             break
                         except ValueError:
@@ -418,8 +413,8 @@ class TemperatureService(object):
             else:
                 # Read sensor value using generic function
                 values = read_temperature(sensor)
-                # Status sensor
-                values['online'] = values['temp'] != TEMPERATURE_OFFLINE
+            # Status sensor
+            values['online'] = values['temp'] != TEMPERATURE_OFFLINE
             # Add sensor in dictionary
             status[name] = values
         return status
