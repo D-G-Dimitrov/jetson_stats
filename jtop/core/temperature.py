@@ -15,17 +15,17 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-
 from .common import cat, check_file
 import os
 import re
+import subprocess
+import shutil
 # Logging
 import logging
 # Create logger
 logger = logging.getLogger(__name__)
 TEMPERATURE_RE = re.compile(r'^temp(?P<num>\d+)_label$')
 TEMPERATURE_OFFLINE = -256
-
 
 def read_temperature(data):
     values = {}
@@ -38,6 +38,69 @@ def read_temperature(data):
             values[name] = TEMPERATURE_OFFLINE
     return values
 
+def read_sensor_value(sensor, sensor_type='generic', default_max=84, default_crit=100):
+    """
+    Read sensor value and convert to appropriate format.
+
+    Args:
+        sensor: Sensor dictionary containing temperature data
+        sensor_type: Type of sensor ('generic', 'mellanox')
+        default_max: Default maximum temperature for this sensor type
+        default_crit: Default critical temperature for this sensor type
+
+    Returns:
+        Dictionary with temperature value, max, crit, and online status
+    """
+    values = {}
+
+    # Check if sensor value is already a number (from Mellanox) or a path
+    if isinstance(sensor.get('temp'), (int, float)):
+        # Direct numeric value (stored in millidegrees)
+        temp_value = sensor['temp'] / 1000.0
+        values['temp'] = temp_value
+        # Copy max and crit values if they exist
+        # Note: For Mellanox sensors, max/crit could be in either millidegrees or Celsius
+        # We need to check if the value is large enough to be in millidegrees (> 1000)
+        if 'max' in sensor:
+            if isinstance(sensor['max'], (int, float)):
+                # Convert from millidegrees to Celsius if the value is large
+                if sensor['max'] > 1000:
+                    values['max'] = sensor['max'] / 1000.0
+                else:
+                    values['max'] = sensor['max']
+            else:
+                values['max'] = sensor['max']
+        if 'crit' in sensor:
+            if isinstance(sensor['crit'], (int, float)):
+                # Convert from millidegrees to Celsius if the value is large
+                if sensor['crit'] > 1000:
+                    values['crit'] = sensor['crit'] / 1000.0
+                else:
+                    values['crit'] = sensor['crit']
+            else:
+                values['crit'] = sensor['crit']
+        # Add default max and crit values if not present
+        if 'max' not in values:
+            values['max'] = default_max
+        if 'crit' not in values:
+            values['crit'] = default_crit
+        values['online'] = True
+    else:
+        # Path-based sensor
+        values = read_temperature(sensor)
+        # Copy max and crit values if they exist
+        if 'max' in sensor:
+            values['max'] = sensor['max']
+        if 'crit' in sensor:
+            values['crit'] = sensor['crit']
+        # Add default max and crit values if not present
+        if 'max' not in values:
+            values['max'] = default_max
+        if 'crit' not in values:
+            values['crit'] = default_crit
+        values['online'] = values['temp'] != TEMPERATURE_OFFLINE
+
+    return values
 
 def get_virtual_thermal_temperature(thermal_path):
     temperature = {}
@@ -68,7 +131,6 @@ def get_virtual_thermal_temperature(thermal_path):
                 logger.info("Found thermal \"{name}\" in {path}".format(name=name, path=os.path.basename(thermal_path)))
     # Sort all temperatures
     return temperature
-
 
 def get_hwmon_thermal_system(root_dir):
     sensor_name = {}
@@ -119,6 +181,185 @@ def get_hwmon_thermal_system(root_dir):
                 sensor_name[raw_name] = sensor
     return sensor_name
 
+def get_mellanox_temperature():
+    """Detect and read temperature from Mellanox NICs with MLNX_OFED support"""
+    temperature = {}
+
+    # Check if mget_temp is available (part of MLNX_OFED)
+    if not shutil.which('mget_temp'):
+        logger.debug("mget_temp not found, Mellanox temperature detection skipped")
+        return temperature
+
+    logger.info("MLNX_OFED detected, using mget_temp for Mellanox NIC temperatures")
+
+    # Find all Mellanox devices
+    try:
+        # Get list of Mellanox devices
+        devices_result = subprocess.run(
+            ['lspci', '-d', '15b3:', '-D'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning("Timeout while running lspci to detect Mellanox devices")
+        return temperature
+    except Exception as e:
+        logger.warning(f"Error running lspci to detect Mellanox devices: {str(e)}")
+        return temperature
+
+    if devices_result.returncode != 0 or not devices_result.stdout.strip():
+        logger.debug("No Mellanox devices found via lspci")
+        return temperature
+
+    device_lines = devices_result.stdout.strip().split('\n')
+    for device_line in device_lines:
+        if device_line.strip():
+            # Extract device name and bus address
+            parts = device_line.strip().split()
+            if len(parts) >= 2:
+                bus_addr = parts[0]
+                device_name = ' '.join(parts[1:])
+                # Check if it's a ConnectX device
+                if 'ConnectX' in device_name or 'MT' in device_name:
+                    # Try to read temperature using mget_temp
+                    # Note: mget_temp must be runnable without sudo
+                    # Users should configure appropriate permissions or use sudo wrapper scripts
+                    try:
+                        temp_result = subprocess.run(
+                            ['mget_temp', '-d', bus_addr],
+                            capture_output=True,
+                            text=True,
+                            timeout=2
+                        )
+                    except subprocess.TimeoutExpired:
+                        logger.warning(f"mget_temp timed out for {bus_addr}")
+                        continue
+                    except Exception as e:
+                        logger.warning(f"Error reading temperature for {bus_addr}: {str(e)}")
+                        continue
+
+                    if temp_result.returncode == 0 and temp_result.stdout.strip():
+                        raw_output = temp_result.stdout.strip()
+                        # Use only the first line and extract the first numeric token to be resilient to format changes
+                        first_line = raw_output.splitlines()[0]
+                        match = re.search(r'([-+]?(?:\d+(?:\.\d*)?|\.\d+))', first_line)
+                        if not match:
+                            logger.warning(f"Could not find numeric temperature in mget_temp output for {bus_addr}: {first_line!r}")
+                            continue
+                        temp_value_str = match.group(1)
+                        try:
+                            temp_celsius = float(temp_value_str)
+                            # Use simplified sensor name "mlx" for Mellanox devices
+                            sensor_key = "mlx"
+                            # Store with higher precision to preserve decimal places
+                            # Include default max and crit values for Mellanox sensors (in Celsius)
+                            temperature[sensor_key] = {
+                                'temp': temp_celsius * 1000.0,  # Store in millidegrees for consistency
+                                'max': 84,  # Default max temperature in Celsius
+                                'crit': 100  # Default critical temperature in Celsius
+                            }
+                            logger.info(f"Found Mellanox NIC temperature: {device_name} = {temp_celsius:.2f}°C")
+                        except ValueError:
+                            logger.warning(f"Could not parse temperature from mget_temp for {bus_addr}: {temp_value_str!r}")
+                    elif temp_result.returncode != 0:
+                        logger.warning(f"mget_temp failed for {bus_addr}: {temp_result.stderr}")
+
+    return temperature
+
+def get_nvme_temperature():
+    """Detect and read temperature from NVMe devices"""
+    temperature = {}
+
+    # Check if nvme command is available
+    if not shutil.which('nvme'):
+        logger.debug("nvme command not found, NVMe temperature detection skipped")
+        return temperature
+
+    logger.info("NVMe CLI detected, checking for NVMe devices")
+
+    # Find all NVMe devices - look for controller devices (nvme0, nvme1, etc.)
+    # not partition devices (nvme0n1, nvme0n2, etc.)
+    try:
+        # List all devices in /dev and filter for NVMe controllers
+        # We need to do this manually since shell globbing doesn't work in subprocess
+        devices = []
+        if os.path.isdir('/dev'):
+            for item in os.listdir('/dev'):
+                # Match nvme0, nvme1, etc. but not nvme0n1, nvme-fabrics, etc.
+                if re.match(r'^nvme\d+$', item):
+                    devices.append(os.path.join('/dev', item))
+        else:
+            logger.debug("No /dev directory found")
+            return temperature
+
+        if not devices:
+            logger.debug("No NVMe devices found")
+            return temperature
+
+    except Exception as e:
+        logger.warning(f"Error detecting NVMe devices: {str(e)}")
+        return temperature
+
+    for device_path in devices:
+        # Extract device name (e.g., /dev/nvme0 -> nvme0)
+        device_name = device_path.replace('/dev/', '')
+        # Remove partition suffix if present (e.g., nvme0n1 -> nvme0)
+        device_name = re.sub(r'n\d+$', '', device_name)
+
+        # Try to read temperature using nvme smart-log
+        # Check if we're running with sudo privileges
+        # Only use sudo if not already running as root
+        # Note: When running as root (euid=0), we don't need sudo
+        use_sudo = os.geteuid() != 0
+        nvme_cmd = ['sudo', 'nvme', 'smart-log', device_path] if use_sudo else ['nvme', 'smart-log', device_path]
+
+        try:
+            temp_result = subprocess.run(
+                nvme_cmd,
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+        except subprocess.TimeoutExpired:
+            logger.warning(f"nvme smart-log timed out for {device_path}")
+            continue
+        except Exception as e:
+            logger.warning(f"Error reading temperature for {device_path}: {str(e)}")
+            continue
+
+        if temp_result.returncode == 0 and temp_result.stdout.strip():
+            raw_output = temp_result.stdout.strip()
+            # Parse first temperature reading from main output (e.g., "temperature				: 48 C (321 Kelvin)")
+            temp_found = False
+            for line in raw_output.split('\n'):
+                if line.strip().startswith('temperature'):
+                    # Extract temperature value (e.g., "temperature				: 48 C (321 Kelvin)")
+                    # Match the temperature value followed by ' C'
+                    match = re.search(r'([0-9]+)\s+C', line)
+                    if match:
+                        try:
+                            temp_celsius = float(match.group(1))
+                            sensor_key = device_name
+                            # Store with higher precision to preserve decimal places
+                            # Include default max and crit values for NVMe sensors
+                            temperature[sensor_key] = {
+                                'temp': temp_celsius * 1000.0,  # Store in millidegrees for consistency
+                                'max': 84,  # Default max temperature
+                                'crit': 100  # Default critical temperature
+                            }
+                            logger.info(f"Found NVMe device temperature: {device_name} = {temp_celsius:.2f}°C")
+                            temp_found = True
+                            break
+                        except ValueError:
+                            logger.warning(f"Could not parse temperature from line: {line!r}")
+
+            if not temp_found:
+                logger.debug(f"No temperature reading found in smart-log output for {device_path}")
+        elif temp_result.returncode != 0:
+            logger.warning(f"nvme smart-log failed for {device_path}: {temp_result.stderr}")
+
+    return temperature
 
 class TemperatureService(object):
 
@@ -137,6 +378,12 @@ class TemperatureService(object):
         if os.path.isdir(hwmon_dir):
             hwmon_temperatures = get_hwmon_thermal_system(hwmon_dir)
             self._temperature.update(hwmon_temperatures)
+        # Check for Mellanox NICs with MLNX_OFED
+        mellanox_temperatures = get_mellanox_temperature()
+        self._temperature.update(mellanox_temperatures)
+        # Check for NVMe devices
+        nvme_temperatures = get_nvme_temperature()
+        self._temperature.update(nvme_temperatures)
         if not self._temperature:
             logger.warning("Temperature not folder found!")
         # Sort all sensors
@@ -146,9 +393,29 @@ class TemperatureService(object):
         status = {}
         # Read temperature from board
         for name, sensor in self._temperature.items():
-            values = read_temperature(sensor)
-            # Status sensor
-            values['online'] = values['temp'] != TEMPERATURE_OFFLINE
+            # Check if this is a Mellanox sensor that needs fresh data
+            if name == 'mlx' and isinstance(sensor.get('temp'), (int, float)):
+                # Get current Mellanox temperature
+                mellanox_temps = get_mellanox_temperature()
+                if name in mellanox_temps:
+                    # Read Mellanox sensor with default max/crit values
+                    values = read_sensor_value(mellanox_temps[name], sensor_type='mellanox')
+                else:
+                    # Sensor not found, mark as offline
+                    values = {'temp': TEMPERATURE_OFFLINE, 'max': 84, 'crit': 100, 'online': False}
+            # Check if this is a NVMe sensor that needs fresh data
+            elif re.match(r'^nvme\d+$', name) and isinstance(sensor.get('temp'), (int, float)):
+                # Get current NVMe temperature
+                nvme_temps = get_nvme_temperature()
+                if name in nvme_temps:
+                    # Read NVMe sensor with default max/crit values
+                    values = read_sensor_value(nvme_temps[name], sensor_type='generic')
+                else:
+                    # Sensor not found, mark as offline
+                    values = {'temp': TEMPERATURE_OFFLINE, 'max': 84, 'crit': 100, 'online': False}
+            else:
+                # Read sensor value using generic function
+                values = read_sensor_value(sensor)
             # Add sensor in dictionary
             status[name] = values
         return status
