@@ -8,7 +8,7 @@ JTOP_BIN="$VENV_DIR/bin/$APP_NAME"
 JTOP_PYTHON="$VENV_DIR/bin/python"
 SYMLINK_PATH="/usr/local/bin/$APP_NAME"
 SYSTEMD_SERVICE="${APP_NAME}.service"
-JTOP_REF="${JTOP_REF:-git+https://github.com/rbonghi/jetson_stats.git}"
+JTOP_REF="${JTOP_REF:-git+https://github.com/D-G-Dimitrov/jetson_stats.git@update/v7.1.5-tets-1}"
 
 cleanup() {
   local exit_code=$?
